@@ -2,8 +2,8 @@ name: Pull FUB Data
 
 on:
   schedule:
-    - cron: '0 16 * * 1-5'
-    - cron: '0 0 * * 2-6'
+    - cron: '0 14 * * *'
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 jobs:
