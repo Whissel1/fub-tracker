@@ -92,7 +92,7 @@ async function pullList(listConfig) {
 
   const snapshotId = snap.id;
   const agentBuckets = {};
-  let url = `https://api.followupboss.com/v1/people?listId=${fub_list_id}&limit=100`;
+  let url = `https://api.followupboss.com/v1/people?smartListId=${fub_list_id}&limit=100`;
   let pageCount = 0;
   let totalPeople = 0;
 
