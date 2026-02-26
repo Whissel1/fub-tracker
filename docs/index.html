@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Expectations Tracker — Whissel Beer Group</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Inter:wght@400;500;600;700&display=swap');
+
+        :root {
+            --dune: #353535;
+            --blaze-orange: #C75912;
+            --almond: #DCCCBB;
+            --warm-white: #F8F5F2;
+            --light-cream: #EAE1D7;
+            --medium-warm: #CEB8A1;
+            --gray-light: #5C5C5C;
+            --gray-medium: #474747;
+            --gray-dark: #292929;
+            --gray-deepest: #1F1F1F;
+            --orange-light: #CD763D;
+            --orange-medium: #CA6828;
+            --orange-dark: #B55517;
+            --orange-deep: #A3501B;
+
+            --green: #2D8A4E;
+            --green-bg: #E8F5ED;
+            --yellow: #B8860B;
+            --yellow-bg: #FFF8E1;
+            --red: #C62828;
+            --red-bg: #FFEBEE;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--warm-white);
+            color: var(--dune);
+            line-height: 1.5;
+        }
+
+        .dashboard {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .header-left h1 {
+            font-family: 'Playfair Display', Georgia, serif;
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--dune);
+            margin-bottom: 4px;
+        }
+
+        .header-left .subtitle {
+            font-size: 14px;
+            color: var(--gray-light);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .search-box {
+            padding: 8px 14px;
+            border: 1px solid var(--almond);
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            background: white;
+            color: var(--dune);
+            width: 240px;
+            transition: border-color 0.2s;
+        }
+
+        .search-box:focus {
+            outline: none;
+            border-color: var(--blaze-orange);
+        }
+
+        .filter-select {
+            padding: 8px 14px;
+            border: 1px solid var(--almond);
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            background: white;
+            color: var(--dune);
+            cursor: pointer;
+        }
+
+        .filter-select:focus {
+            outline: none;
+            border-color: var(--blaze-orange);
+        }
+
+        .refresh-btn {
+            padding: 8px 16px;
+            background: var(--blaze-orange);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .refresh-btn:hover { background: var(--orange-dark); }
+        .refresh-btn:disabled { background: var(--almond); cursor: not-allowed; }
+
+        /* KPI Cards */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .kpi-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(53,53,53,0.08);
+            border-top: 3px solid var(--almond);
+        }
+
+        .kpi-card.accent { border-top-color: var(--blaze-orange); }
+
+        .kpi-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--gray-light);
+            margin-bottom: 8px;
+        }
+
+        .kpi-value {
+            font-family: 'Playfair Display', Georgia, serif;
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--dune);
+        }
+
+        .kpi-detail {
+            font-size: 12px;
+            color: var(--gray-light);
+            margin-top: 4px;
+        }
+
+        /* Charts Section */
+        .charts-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .charts-row { grid-template-columns: 1fr; }
+        }
+
+        .chart-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(53,53,53,0.08);
+        }
+
+        .chart-card h3 {
+            font-family: 'Playfair Display', Georgia, serif;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--dune);
+            margin-bottom: 16px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 260px;
+        }
+
+        /* Matrix Table */
+        .table-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(53,53,53,0.08);
+            overflow-x: auto;
+        }
+
+        .table-card h3 {
+            font-family: 'Playfair Display', Georgia, serif;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--dune);
+            margin-bottom: 4px;
+        }
+
+        .table-card .table-subtitle {
+            font-size: 13px;
+            color: var(--gray-light);
+            margin-bottom: 16px;
+        }
+
+        .matrix-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 13px;
+        }
+
+        .matrix-table thead th {
+            background: var(--dune);
+            color: white;
+            padding: 10px 12px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 12px;
+            position: sticky;
+            top: 0;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .matrix-table thead th:first-child {
+            text-align: left;
+            border-radius: 8px 0 0 0;
+            position: sticky;
+            left: 0;
+            z-index: 3;
+            min-width: 180px;
+        }
+
+        .matrix-table thead th:last-child {
+            border-radius: 0 8px 0 0;
+        }
+
+        .matrix-table thead th .sort-arrow {
+            font-size: 10px;
+            margin-left: 4px;
+            opacity: 0.5;
+        }
+
+        .matrix-table thead th.sorted .sort-arrow {
+            opacity: 1;
+        }
+
+        .matrix-table tbody tr {
+            transition: background 0.15s;
+        }
+
+        .matrix-table tbody tr:hover {
+            background: var(--warm-white);
+        }
+
+        .matrix-table tbody tr:nth-child(even) {
+            background: rgba(220, 204, 187, 0.08);
+        }
+
+        .matrix-table tbody tr:nth-child(even):hover {
+            background: var(--warm-white);
+        }
+
+        .matrix-table tbody td {
+            padding: 8px 12px;
+            text-align: center;
+            border-bottom: 1px solid rgba(220, 204, 187, 0.3);
+            white-space: nowrap;
+        }
+
+        .matrix-table tbody td:first-child {
+            text-align: left;
+            font-weight: 500;
+            position: sticky;
+            left: 0;
+            background: inherit;
+            z-index: 1;
+        }
+
+        .matrix-table tbody tr:hover td:first-child {
+            background: var(--warm-white);
+        }
+
+        /* Status cells */
+        .cell-green {
+            background: var(--green-bg) !important;
+            color: var(--green);
+            font-weight: 600;
+        }
+
+        .cell-yellow {
+            background: var(--yellow-bg) !important;
+            color: var(--yellow);
+            font-weight: 600;
+        }
+
+        .cell-red {
+            background: var(--red-bg) !important;
+            color: var(--red);
+            font-weight: 700;
+        }
+
+        .cell-empty {
+            color: var(--almond);
+            font-style: italic;
+        }
+
+        .total-cell {
+            font-weight: 700;
+            color: var(--dune);
+        }
+
+        /* Legend */
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--gray-light);
+        }
+
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+        }
+
+        .legend-dot.green { background: var(--green-bg); border: 1px solid var(--green); }
+        .legend-dot.yellow { background: var(--yellow-bg); border: 1px solid var(--yellow); }
+        .legend-dot.red { background: var(--red-bg); border: 1px solid var(--red); }
+
+        /* Loading State */
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(248, 245, 242, 0.92);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            transition: opacity 0.3s;
+        }
+
+        .loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--almond);
+            border-top-color: var(--blaze-orange);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-text {
+            margin-top: 16px;
+            font-size: 14px;
+            color: var(--gray-light);
+        }
+
+        /* Error */
+        .error-banner {
+            background: var(--red-bg);
+            color: var(--red);
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 14px;
+            display: none;
+        }
+
+        /* Pull timestamp */
+        .pull-meta {
+            font-size: 12px;
+            color: var(--gray-light);
+            margin-bottom: 16px;
+            text-align: right;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .dashboard { padding: 16px; }
+            .header-left h1 { font-size: 22px; }
+            .kpi-value { font-size: 26px; }
+            .search-box { width: 100%; }
+        }
+
+        /* Print */
+        @media print {
+            body { background: white; }
+            .refresh-btn, .search-box, .filter-select { display: none; }
+            .table-card { overflow: visible; }
+            .chart-card { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div class="loading-text">Loading agent data from Supabase…</div>
+    </div>
+
+    <div class="dashboard">
+        <div class="error-banner" id="errorBanner"></div>
+
+        <header>
+            <div class="header-left">
+                <h1>Agent Expectations Tracker</h1>
+                <div class="subtitle">Whissel Beer Group — Smart List Performance</div>
+            </div>
+            <div class="header-right">
+                <input type="text" class="search-box" id="agentSearch" placeholder="Search agents…" />
+                <select class="filter-select" id="statusFilter">
+                    <option value="all">All Statuses</option>
+                    <option value="red">Red Only (Over Threshold)</option>
+                    <option value="yellow">Yellow + Red</option>
+                    <option value="green">Green Only</option>
+                </select>
+                <button class="refresh-btn" id="refreshBtn" onclick="loadDashboard()">Refresh</button>
+            </div>
+        </header>
+
+        <div class="pull-meta" id="pullMeta"></div>
+
+        <!-- KPI Cards -->
+        <div class="kpi-row" id="kpiRow">
+            <div class="kpi-card accent">
+                <div class="kpi-label">Total Agents</div>
+                <div class="kpi-value" id="kpiAgents">—</div>
+                <div class="kpi-detail" id="kpiAgentsDetail"></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Total Leads</div>
+                <div class="kpi-value" id="kpiLeads">—</div>
+                <div class="kpi-detail" id="kpiLeadsDetail">across all lists</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Red Cells</div>
+                <div class="kpi-value" id="kpiRed">—</div>
+                <div class="kpi-detail" id="kpiRedDetail">over threshold</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Green Rate</div>
+                <div class="kpi-value" id="kpiGreen">—</div>
+                <div class="kpi-detail" id="kpiGreenDetail">within expectations</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Avg Leads/Agent</div>
+                <div class="kpi-value" id="kpiAvg">—</div>
+                <div class="kpi-detail" id="kpiAvgDetail">across all lists</div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-row">
+            <div class="chart-card">
+                <h3>Leads by Smart List</h3>
+                <div class="chart-container">
+                    <canvas id="chartByList"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>Agent Status Distribution</h3>
+                <div class="chart-container">
+                    <canvas id="chartStatusDist"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Matrix Table -->
+        <div class="table-card">
+            <h3>Agent × Smart List Matrix</h3>
+            <div class="table-subtitle">Lead counts with threshold color coding. Click column headers to sort.</div>
+            <div class="legend">
+                <div class="legend-item"><div class="legend-dot green"></div> Within expectations (≤ green max)</div>
+                <div class="legend-item"><div class="legend-dot yellow"></div> Watch (≤ yellow max)</div>
+                <div class="legend-item"><div class="legend-dot red"></div> Over threshold (&gt; yellow max)</div>
+            </div>
+            <div style="max-height: 600px; overflow-y: auto;">
+                <table class="matrix-table" id="matrixTable">
+                    <thead id="matrixHead"></thead>
+                    <tbody id="matrixBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── Supabase Connection ──
+        const SUPABASE_URL = 'https://ndicmtqagcgtbqtxaxwb.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kaWNtdHFhZ2NndGJxdHhheHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwODQ0NDUsImV4cCI6MjA4NzY2MDQ0NX0.yLcOo2HICNASUJ4RxAnGLIyDZXb6GQRYgkvXSeOB_Bw';
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // ── Brand Colors for Charts ──
+        const CHART_COLORS = {
+            orange: '#C75912',
+            orangeLight: '#CD763D',
+            dune: '#353535',
+            almond: '#DCCCBB',
+            cream: '#EAE1D7',
+            warmNeutral: '#CEB8A1',
+            green: '#2D8A4E',
+            yellow: '#B8860B',
+            red: '#C62828',
+        };
+
+        // ── State ──
+        let allAgentRows = [];     // { agent_id, agent_name, list_id, lead_count, ... }
+        let smartLists = [];       // { id, name, sort_order }
+        let thresholds = {};       // { list_id: { green_max, yellow_max } }
+        let latestSnapshotIds = [];
+        let pullDate = null;
+        let sortCol = 'total';
+        let sortDir = 'desc';
+
+        // ── Data Loading ──
+        async function loadDashboard() {
+            const btn = document.getElementById('refreshBtn');
+            const overlay = document.getElementById('loadingOverlay');
+            btn.disabled = true;
+            overlay.classList.remove('hidden');
+
+            try {
+                // 1. Load smart lists
+                const { data: slData, error: slErr } = await sb
+                    .from('smart_lists')
+                    .select('id, name, sort_order')
+                    .eq('is_tracked', true)
+                    .order('sort_order');
+                if (slErr) throw slErr;
+                smartLists = slData;
+
+                // 2. Load thresholds
+                const { data: thData, error: thErr } = await sb
+                    .from('thresholds')
+                    .select('smart_list_id, green_max, yellow_max');
+                if (thErr) throw thErr;
+                thresholds = {};
+                for (const t of thData) {
+                    thresholds[t.smart_list_id] = { green_max: t.green_max, yellow_max: t.yellow_max };
+                }
+
+                // 3. Find latest snapshot per list
+                const { data: snapData, error: snapErr } = await sb
+                    .from('snapshots')
+                    .select('id, smart_list_id, pull_date')
+                    .eq('status', 'complete')
+                    .order('pulled_at', { ascending: false });
+                if (snapErr) throw snapErr;
+
+                const latestByList = {};
+                for (const s of snapData) {
+                    if (!latestByList[s.smart_list_id]) {
+                        latestByList[s.smart_list_id] = s;
+                    }
+                }
+                latestSnapshotIds = Object.values(latestByList).map(s => s.id);
+                pullDate = Object.values(latestByList)[0]?.pull_date || null;
+
+                // 4. Load agent_list_counts for latest snapshots
+                let allCounts = [];
+                // Supabase .in() has a limit, but 9 IDs is fine
+                const { data: countData, error: countErr } = await sb
+                    .from('agent_list_counts')
+                    .select('agent_id, smart_list_id, lead_count, avg_days_since_last_attempt, max_days_since_last_attempt, leads_with_no_attempt_30d, leads_with_recent_2way, leads_with_site_activity_14d')
+                    .in('snapshot_id', latestSnapshotIds);
+                if (countErr) throw countErr;
+                allCounts = countData;
+
+                // 5. Load agent names
+                const agentIds = [...new Set(allCounts.map(c => c.agent_id))];
+                const { data: agentData, error: agentErr } = await sb
+                    .from('agents')
+                    .select('id, name')
+                    .in('id', agentIds);
+                if (agentErr) throw agentErr;
+                const agentMap = {};
+                for (const a of agentData) agentMap[a.id] = a.name;
+
+                // 6. Merge
+                allAgentRows = allCounts.map(c => ({
+                    ...c,
+                    agent_name: agentMap[c.agent_id] || `Agent ${c.agent_id}`,
+                }));
+
+                renderDashboard();
+                document.getElementById('errorBanner').style.display = 'none';
+            } catch (err) {
+                console.error('Load error:', err);
+                const banner = document.getElementById('errorBanner');
+                banner.textContent = `Error loading data: ${err.message || err}`;
+                banner.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                overlay.classList.add('hidden');
+            }
+        }
+
+        // ── Threshold Logic ──
+        function getStatus(leadCount, listId) {
+            const t = thresholds[listId];
+            if (!t) return 'none';
+            if (leadCount <= t.green_max) return 'green';
+            if (leadCount <= t.yellow_max) return 'yellow';
+            return 'red';
+        }
+
+        // ── Build Agent Matrix ──
+        function buildMatrix(rows) {
+            // Group by agent
+            const agentMap = {};
+            for (const r of rows) {
+                if (!agentMap[r.agent_id]) {
+                    agentMap[r.agent_id] = { name: r.agent_name, id: r.agent_id, lists: {}, total: 0 };
+                }
+                agentMap[r.agent_id].lists[r.smart_list_id] = r;
+                agentMap[r.agent_id].total += r.lead_count;
+            }
+            return Object.values(agentMap);
+        }
+
+        // ── Filtering ──
+        function getFilteredRows() {
+            const search = document.getElementById('agentSearch').value.toLowerCase();
+            const statusFilter = document.getElementById('statusFilter').value;
+
+            let rows = allAgentRows;
+
+            // Search filter
+            if (search) {
+                const matchingAgents = new Set();
+                for (const r of rows) {
+                    if (r.agent_name.toLowerCase().includes(search)) {
+                        matchingAgents.add(r.agent_id);
+                    }
+                }
+                rows = rows.filter(r => matchingAgents.has(r.agent_id));
+            }
+
+            // Status filter - keep agents where ANY cell matches the filter
+            if (statusFilter !== 'all') {
+                const agentStatuses = {};
+                for (const r of rows) {
+                    if (!agentStatuses[r.agent_id]) agentStatuses[r.agent_id] = new Set();
+                    agentStatuses[r.agent_id].add(getStatus(r.lead_count, r.smart_list_id));
+                }
+                const keepAgents = new Set();
+                for (const [agentId, statuses] of Object.entries(agentStatuses)) {
+                    if (statusFilter === 'red' && statuses.has('red')) keepAgents.add(parseInt(agentId));
+                    if (statusFilter === 'yellow' && (statuses.has('red') || statuses.has('yellow'))) keepAgents.add(parseInt(agentId));
+                    if (statusFilter === 'green' && !statuses.has('red') && !statuses.has('yellow')) keepAgents.add(parseInt(agentId));
+                }
+                rows = rows.filter(r => keepAgents.has(r.agent_id));
+            }
+
+            return rows;
+        }
+
+        // ── Render ──
+        function renderDashboard() {
+            const filteredRows = getFilteredRows();
+            const matrix = buildMatrix(filteredRows);
+            const allMatrix = buildMatrix(allAgentRows);
+
+            renderKPIs(filteredRows, allMatrix);
+            renderPullMeta();
+            renderCharts(filteredRows, allMatrix);
+            renderMatrix(matrix);
+        }
+
+        function renderKPIs(rows, allMatrix) {
+            const agents = new Set(rows.map(r => r.agent_id));
+            const totalLeads = rows.reduce((s, r) => s + r.lead_count, 0);
+
+            let greenCount = 0, yellowCount = 0, redCount = 0, totalCells = 0;
+            for (const r of rows) {
+                const status = getStatus(r.lead_count, r.smart_list_id);
+                totalCells++;
+                if (status === 'green') greenCount++;
+                if (status === 'yellow') yellowCount++;
+                if (status === 'red') redCount++;
+            }
+
+            document.getElementById('kpiAgents').textContent = agents.size.toLocaleString();
+            document.getElementById('kpiAgentsDetail').textContent = `of ${allMatrix.length} total`;
+            document.getElementById('kpiLeads').textContent = totalLeads.toLocaleString();
+            document.getElementById('kpiRed').textContent = redCount.toLocaleString();
+            document.getElementById('kpiRedDetail').textContent = `${yellowCount} yellow, ${greenCount} green`;
+            const greenRate = totalCells > 0 ? Math.round((greenCount / totalCells) * 100) : 0;
+            document.getElementById('kpiGreen').textContent = greenRate + '%';
+            document.getElementById('kpiGreenDetail').textContent = `${greenCount} of ${totalCells} cells`;
+            const avg = agents.size > 0 ? Math.round(totalLeads / agents.size) : 0;
+            document.getElementById('kpiAvg').textContent = avg.toLocaleString();
+        }
+
+        function renderPullMeta() {
+            const el = document.getElementById('pullMeta');
+            if (pullDate) {
+                const d = new Date(pullDate + 'T00:00:00');
+                el.textContent = `Latest pull: ${d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} · ${latestSnapshotIds.length} lists`;
+            }
+        }
+
+        // ── Charts ──
+        let chartByList = null;
+        let chartStatusDist = null;
+
+        function renderCharts(rows, allMatrix) {
+            // Leads by Smart List (bar)
+            const listTotals = {};
+            for (const sl of smartLists) listTotals[sl.id] = 0;
+            for (const r of rows) {
+                if (listTotals[r.smart_list_id] !== undefined) listTotals[r.smart_list_id] += r.lead_count;
+            }
+
+            const labels = smartLists.map(sl => sl.name.length > 20 ? sl.name.slice(0, 18) + '…' : sl.name);
+            const values = smartLists.map(sl => listTotals[sl.id] || 0);
+
+            if (chartByList) chartByList.destroy();
+            chartByList = new Chart(document.getElementById('chartByList'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: CHART_COLORS.orange,
+                        borderRadius: 6,
+                        maxBarThickness: 40,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: CHART_COLORS.dune,
+                            titleFont: { family: 'Inter' },
+                            bodyFont: { family: 'Inter' },
+                            callbacks: {
+                                label: ctx => ctx.parsed.y.toLocaleString() + ' leads'
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { font: { size: 11, family: 'Inter' }, color: CHART_COLORS.dune, maxRotation: 45 },
+                            grid: { display: false }
+                        },
+                        y: {
+                            ticks: { font: { size: 11, family: 'Inter' }, color: '#5C5C5C' },
+                            grid: { color: 'rgba(220,204,187,0.3)' }
+                        }
+                    }
+                }
+            });
+
+            // Status distribution (doughnut)
+            let g = 0, y = 0, r2 = 0;
+            for (const row of rows) {
+                const s = getStatus(row.lead_count, row.smart_list_id);
+                if (s === 'green') g++;
+                if (s === 'yellow') y++;
+                if (s === 'red') r2++;
+            }
+
+            if (chartStatusDist) chartStatusDist.destroy();
+            chartStatusDist = new Chart(document.getElementById('chartStatusDist'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Green', 'Yellow', 'Red'],
+                    datasets: [{
+                        data: [g, y, r2],
+                        backgroundColor: [CHART_COLORS.green, CHART_COLORS.yellow, CHART_COLORS.red],
+                        borderWidth: 2,
+                        borderColor: '#ffffff',
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '55%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { font: { size: 12, family: 'Inter' }, color: CHART_COLORS.dune, padding: 16 }
+                        },
+                        tooltip: {
+                            backgroundColor: CHART_COLORS.dune,
+                            callbacks: {
+                                label: ctx => {
+                                    const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                    const pct = total > 0 ? Math.round((ctx.parsed / total) * 100) : 0;
+                                    return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ── Matrix Table ──
+        function renderMatrix(matrix) {
+            const thead = document.getElementById('matrixHead');
+            const tbody = document.getElementById('matrixBody');
+
+            // Sort
+            matrix.sort((a, b) => {
+                let aVal, bVal;
+                if (sortCol === 'name') {
+                    aVal = a.name.toLowerCase();
+                    bVal = b.name.toLowerCase();
+                    return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                } else if (sortCol === 'total') {
+                    aVal = a.total; bVal = b.total;
+                } else {
+                    // Sort by specific list lead count
+                    aVal = a.lists[sortCol]?.lead_count || 0;
+                    bVal = b.lists[sortCol]?.lead_count || 0;
+                }
+                return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+            });
+
+            // Header
+            let headerHTML = '<tr>';
+            headerHTML += `<th data-col="name" class="${sortCol === 'name' ? 'sorted' : ''}" onclick="setSort('name')">Agent <span class="sort-arrow">${sortCol === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
+            for (const sl of smartLists) {
+                const abbr = sl.name.length > 14 ? sl.name.slice(0, 12) + '…' : sl.name;
+                const cls = sortCol === sl.id ? 'sorted' : '';
+                const arrow = sortCol === sl.id ? (sortDir === 'asc' ? '▲' : '▼') : '↕';
+                headerHTML += `<th class="${cls}" onclick="setSort(${sl.id})" title="${sl.name}">${abbr} <span class="sort-arrow">${arrow}</span></th>`;
+            }
+            headerHTML += `<th class="${sortCol === 'total' ? 'sorted' : ''}" onclick="setSort('total')">Total <span class="sort-arrow">${sortCol === 'total' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
+            headerHTML += '</tr>';
+            thead.innerHTML = headerHTML;
+
+            // Body
+            let bodyHTML = '';
+            for (const agent of matrix) {
+                bodyHTML += '<tr>';
+                bodyHTML += `<td>${escHTML(agent.name)}</td>`;
+                for (const sl of smartLists) {
+                    const entry = agent.lists[sl.id];
+                    if (entry) {
+                        const status = getStatus(entry.lead_count, sl.id);
+                        const cls = status === 'green' ? 'cell-green' : status === 'yellow' ? 'cell-yellow' : status === 'red' ? 'cell-red' : '';
+                        bodyHTML += `<td class="${cls}" title="${sl.name}: ${entry.lead_count} leads">${entry.lead_count}</td>`;
+                    } else {
+                        bodyHTML += `<td class="cell-empty">—</td>`;
+                    }
+                }
+                bodyHTML += `<td class="total-cell">${agent.total.toLocaleString()}</td>`;
+                bodyHTML += '</tr>';
+            }
+            tbody.innerHTML = bodyHTML;
+        }
+
+        function setSort(col) {
+            if (sortCol === col) {
+                sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortCol = col;
+                sortDir = col === 'name' ? 'asc' : 'desc';
+            }
+            renderDashboard();
+        }
+
+        function escHTML(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        // ── Event Listeners ──
+        document.getElementById('agentSearch').addEventListener('input', debounce(renderDashboard, 250));
+        document.getElementById('statusFilter').addEventListener('change', renderDashboard);
+
+        function debounce(fn, ms) {
+            let timer;
+            return () => { clearTimeout(timer); timer = setTimeout(fn, ms); };
+        }
+
+        // ── Init ──
+        loadDashboard();
+    </script>
+</body>
+</html>
