@@ -58,7 +58,25 @@ function processPerson(person) {
   };
 }
 
-async function pullList(listConfig) {
+// ── Load known agent IDs from DB ──
+async function loadKnownAgentIds() {
+  const ids = new Set();
+  let offset = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data, error } = await supabase
+      .from('agents')
+      .select('id')
+      .range(offset, offset + pageSize - 1);
+    if (error) throw new Error(`Failed to load agents: ${error.message}`);
+    for (const row of data) ids.add(row.id);
+    if (data.length < pageSize) break;
+    offset += pageSize;
+  }
+  return ids;
+}
+
+async function pullList(listConfig, knownAgentIds) {
   const { fub_list_id, name } = listConfig;
   console.log(`\n── Pulling list: ${name} (${fub_list_id}) ──`);
   const startTime = Date.now();
@@ -135,17 +153,31 @@ async function pullList(listConfig) {
       if (url) await sleep(200);
     }
 
-    const rows = Object.entries(agentBuckets).map(([agentId, b]) => ({
-      snapshot_id: snapshotId,
-      agent_id: parseInt(agentId),
-      smart_list_id: sl.id,
-      lead_count: b.count,
-      avg_days_since_last_attempt: b.daysCount > 0 ? Math.round(b.totalDays / b.daysCount) : null,
-      max_days_since_last_attempt: b.maxDays || null,
-      leads_with_no_attempt_30d: b.noAttempt30d,
-      leads_with_recent_2way: b.recentTwoWay,
-      leads_with_site_activity_14d: b.siteActivity14d,
-    }));
+    // Filter out agent IDs not in the agents table
+    const skippedAgents = [];
+    const rows = [];
+    for (const [agentId, b] of Object.entries(agentBuckets)) {
+      const id = parseInt(agentId);
+      if (!knownAgentIds.has(id)) {
+        skippedAgents.push(id);
+        continue;
+      }
+      rows.push({
+        snapshot_id: snapshotId,
+        agent_id: id,
+        smart_list_id: sl.id,
+        lead_count: b.count,
+        avg_days_since_last_attempt: b.daysCount > 0 ? Math.round(b.totalDays / b.daysCount) : null,
+        max_days_since_last_attempt: b.maxDays || null,
+        leads_with_no_attempt_30d: b.noAttempt30d,
+        leads_with_recent_2way: b.recentTwoWay,
+        leads_with_site_activity_14d: b.siteActivity14d,
+      });
+    }
+
+    if (skippedAgents.length > 0) {
+      console.log(`  ⚠ Skipped ${skippedAgents.length} unknown agent IDs: ${skippedAgents.join(', ')}`);
+    }
 
     if (rows.length > 0) {
       const { error: insertErr } = await supabase.from('agent_list_counts').insert(rows);
@@ -157,7 +189,7 @@ async function pullList(listConfig) {
       status: 'complete', duration_ms: duration, pulled_at: new Date().toISOString(),
     }).eq('id', snapshotId);
 
-    console.log(`  ✓ ${name}: ${totalPeople} leads across ${Object.keys(agentBuckets).length} agents (${pageCount} pages, ${duration}ms)`);
+    console.log(`  ✓ ${name}: ${totalPeople} leads across ${rows.length} agents (${pageCount} pages, ${duration}ms)`);
   } catch (err) {
     const duration = Date.now() - startTime;
     await supabase.from('snapshots').update({
@@ -170,8 +202,14 @@ async function pullList(listConfig) {
 async function main() {
   console.log('=== FUB Smart List Pull ===');
   console.log(`Time: ${new Date().toISOString()}`);
+
+  // Load known agent IDs once before pulling lists
+  console.log('Loading known agents from DB...');
+  const knownAgentIds = await loadKnownAgentIds();
+  console.log(`Found ${knownAgentIds.size} agents in DB`);
+
   for (const list of TRACKED_LISTS) {
-    await pullList(list);
+    await pullList(list, knownAgentIds);
     await sleep(1000);
   }
   console.log('\n=== Done ===');
