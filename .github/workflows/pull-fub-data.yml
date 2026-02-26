@@ -23,16 +23,16 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Pull FUB smart list data
-        env:
-          FUB_API_KEY: ${{ secrets.FUB_API_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node scripts/pull-fub-data.js
-
       - name: Sync agents
         env:
           FUB_API_KEY: ${{ secrets.FUB_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/sync-agents.js
+
+      - name: Pull FUB smart list data
+        env:
+          FUB_API_KEY: ${{ secrets.FUB_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/pull-fub-data.js
