@@ -16,26 +16,44 @@ function fubHeaders() {
   };
 }
 
+async function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 async function main() {
   console.log('=== Syncing FUB Agents ===');
-  const resp = await fetch('https://api.followupboss.com/v1/users?limit=100', {
-    headers: fubHeaders(),
-  });
-  if (!resp.ok) {
-    throw new Error(`FUB API ${resp.status}: ${await resp.text()}`);
+  const allUsers = [];
+  let url = 'https://api.followupboss.com/v1/users?limit=100';
+  let pageCount = 0;
+
+  while (url) {
+    pageCount++;
+    console.log(`  Page ${pageCount}...`);
+    const resp = await fetch(url, { headers: fubHeaders() });
+    if (!resp.ok) {
+      throw new Error(`FUB API ${resp.status}: ${await resp.text()}`);
+    }
+    const json = await resp.json();
+    const users = json.users || [];
+    allUsers.push(...users);
+    url = json._metadata?.nextLink || null;
+    if (url) await sleep(200);
   }
-  const json = await resp.json();
-  const users = json.users || [];
-  const rows = users.map((u) => ({
+
+  const rows = allUsers.map((u) => ({
     id: u.id,
     name: `${u.firstName || ''} ${u.lastName || ''}`.trim(),
     email: u.email || null,
     role: u.role || null,
     is_active: u.status === 'active',
   }));
-  const { error } = await supabase.from('agents').upsert(rows, { onConflict: 'id' });
-  if (error) throw new Error(`Upsert error: ${error.message}`);
-  console.log(`✓ Synced ${rows.length} agents`);
+
+  if (rows.length > 0) {
+    const { error } = await supabase.from('agents').upsert(rows, { onConflict: 'id' });
+    if (error) throw new Error(`Upsert error: ${error.message}`);
+  }
+
+  console.log(`✓ Synced ${rows.length} agents across ${pageCount} pages`);
 }
 
 main().catch((err) => {
