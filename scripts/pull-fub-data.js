@@ -1,6 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 
-// ── Config ──────────────────────────────────────────────────────────
+// ── Config ──
 const FUB_API_KEY = process.env.FUB_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -19,7 +19,7 @@ const TRACKED_LISTS = [
   { fub_list_id: 1106, name: 'Submitting Offers' },
 ];
 
-// ── FUB helpers ─────────────────────────────────────────────────────
+// ── FUB helpers ──
 function fubHeaders() {
   const token = Buffer.from(FUB_API_KEY + ':').toString('base64');
   return {
@@ -37,7 +37,7 @@ async function sleep(ms) {
 function daysBetween(dateStr) {
   if (!dateStr) return null;
   const d = new Date(dateStr);
-  if (d.getFullYear() <= 2001) return null; // FUB sentinel
+  if (d.getFullYear() <= 2001) return null;
   return Math.floor((Date.now() - d.getTime()) / 86400000);
 }
 
@@ -45,20 +45,16 @@ function processPerson(person) {
   const agentId = person.assignedUserId || null;
   if (!agentId) return null;
 
-  const lastAttempt =
-    person.lastOutboundAttempt || person.lastAttemptedContact || null;
-  const lastTwoWay =
-    person.lastTwoWayCommunication || person.lastCommunication || null;
-  const lastSiteVisit =
-    person.lastSiteVisit || person.lastPropertySearch || null;
+  const lastAttempt = person.lastOutboundAttempt || person.lastAttemptedContact || null;
+  const lastTwoWay = person.lastTwoWayCommunication || person.lastCommunication || null;
+  const lastSiteVisit = person.lastSiteVisit || person.lastPropertySearch || null;
 
   return {
     agentId,
     daysSinceLastAttempt: daysBetween(lastAttempt),
     hasRecentTwoWay: daysBetween(lastTwoWay) !== null && daysBetween(lastTwoWay) <= 14,
     hasSiteActivity14d: daysBetween(lastSiteVisit) !== null && daysBetween(lastSiteVisit) <= 14,
-    noAttempt30d:
-      daysBetween(lastAttempt) === null || daysBetween(lastAttempt) > 30,
+    noAttempt30d: daysBetween(lastAttempt) === null || daysBetween(lastAttempt) > 30,
     detail: {
       fub_person_id: person.id,
       person_name: `${person.firstName || ''} ${person.lastName || ''}`.trim(),
@@ -74,17 +70,15 @@ function processPerson(person) {
   };
 }
 
-// ── Pull one smart list ─────────────────────────────────────────────
 async function pullList(listConfig) {
   const { fub_list_id, name } = listConfig;
   console.log(`\n── Pulling list: ${name} (${fub_list_id}) ──`);
   const startTime = Date.now();
 
-  // Look up internal smart_list_id
   const { data: sl } = await supabase
     .from('smart_lists')
     .select('id')
-    .eq('fub_list_id', fub_list_id)
+    .eq('id', fub_list_id)
     .single();
 
   if (!sl) {
@@ -92,7 +86,6 @@ async function pullList(listConfig) {
     return;
   }
 
-  // Create snapshot
   const { data: snap, error: snapErr } = await supabase
     .from('snapshots')
     .insert({
@@ -110,9 +103,7 @@ async function pullList(listConfig) {
   }
 
   const snapshotId = snap.id;
-
-  // Aggregate per-agent
-  const agentBuckets = {}; // agentId -> { count, totalDays, maxDays, noAttempt30d, recentTwoWay, siteActivity14d, details[] }
+  const agentBuckets = {};
   let url = `https://api.followupboss.com/v1/people?listId=${fub_list_id}&limit=100&fields=id,firstName,lastName,assignedUserId,lastOutboundAttempt,lastAttemptedContact,lastTwoWayCommunication,lastCommunication,lastSiteVisit,lastPropertySearch,favoritesCount,timeFrame,stage,source,tags`;
   let pageCount = 0;
   let totalPeople = 0;
@@ -136,13 +127,8 @@ async function pullList(listConfig) {
 
         if (!agentBuckets[result.agentId]) {
           agentBuckets[result.agentId] = {
-            count: 0,
-            totalDays: 0,
-            daysCount: 0,
-            maxDays: 0,
-            noAttempt30d: 0,
-            recentTwoWay: 0,
-            siteActivity14d: 0,
+            count: 0, totalDays: 0, daysCount: 0, maxDays: 0,
+            noAttempt30d: 0, recentTwoWay: 0, siteActivity14d: 0,
           };
         }
         const b = agentBuckets[result.agentId];
@@ -157,75 +143,13 @@ async function pullList(listConfig) {
         if (result.hasSiteActivity14d) b.siteActivity14d++;
       }
 
-      // Follow cursor pagination
       url = json._metadata?.nextLink || null;
-
-      // Rate limiting: pause between pages
       if (url) await sleep(200);
     }
 
-    // Write agent_list_counts
     const rows = Object.entries(agentBuckets).map(([agentId, b]) => ({
       snapshot_id: snapshotId,
       agent_id: parseInt(agentId),
       smart_list_id: sl.id,
       lead_count: b.count,
-      avg_days_since_last_attempt:
-        b.daysCount > 0 ? Math.round(b.totalDays / b.daysCount) : null,
-      max_days_since_last_attempt: b.maxDays || null,
-      leads_with_no_attempt_30d: b.noAttempt30d,
-      leads_with_recent_2way: b.recentTwoWay,
-      leads_with_site_activity_14d: b.siteActivity14d,
-    }));
-
-    if (rows.length > 0) {
-      const { error: insertErr } = await supabase
-        .from('agent_list_counts')
-        .insert(rows);
-      if (insertErr) throw new Error(`Insert error: ${insertErr.message}`);
-    }
-
-    const duration = Date.now() - startTime;
-    await supabase
-      .from('snapshots')
-      .update({
-        status: 'complete',
-        duration_ms: duration,
-        pulled_at: new Date().toISOString(),
-      })
-      .eq('id', snapshotId);
-
-    console.log(
-      `  ✓ ${name}: ${totalPeople} leads across ${Object.keys(agentBuckets).length} agents (${pageCount} pages, ${duration}ms)`
-    );
-  } catch (err) {
-    const duration = Date.now() - startTime;
-    await supabase
-      .from('snapshots')
-      .update({
-        status: 'error',
-        error_message: err.message,
-        duration_ms: duration,
-      })
-      .eq('id', snapshotId);
-    console.error(`  ✗ ${name}: ${err.message}`);
-  }
-}
-
-// ── Main ────────────────────────────────────────────────────────────
-async function main() {
-  console.log('=== FUB Smart List Pull ===');
-  console.log(`Time: ${new Date().toISOString()}`);
-
-  for (const list of TRACKED_LISTS) {
-    await pullList(list);
-    await sleep(1000); // breathing room between lists
-  }
-
-  console.log('\n=== Done ===');
-}
-
-main().catch((err) => {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+      avg_days_since_last_attempt: b.daysCount > 0 ? Math.round(b.totalDays / b.daysCount) : null
