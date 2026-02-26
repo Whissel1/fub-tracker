@@ -152,4 +152,44 @@ async function pullList(listConfig) {
       agent_id: parseInt(agentId),
       smart_list_id: sl.id,
       lead_count: b.count,
-      avg_days_since_last_attempt: b.daysCount > 0 ? Math.round(b.totalDays / b.daysCount) : null
+      avg_days_since_last_attempt: b.daysCount > 0 ? Math.round(b.totalDays / b.daysCount) : null,
+      max_days_since_last_attempt: b.maxDays || null,
+      leads_with_no_attempt_30d: b.noAttempt30d,
+      leads_with_recent_2way: b.recentTwoWay,
+      leads_with_site_activity_14d: b.siteActivity14d,
+    }));
+
+    if (rows.length > 0) {
+      const { error: insertErr } = await supabase.from('agent_list_counts').insert(rows);
+      if (insertErr) throw new Error(`Insert error: ${insertErr.message}`);
+    }
+
+    const duration = Date.now() - startTime;
+    await supabase.from('snapshots').update({
+      status: 'complete', duration_ms: duration, pulled_at: new Date().toISOString(),
+    }).eq('id', snapshotId);
+
+    console.log(`  ✓ ${name}: ${totalPeople} leads across ${Object.keys(agentBuckets).length} agents (${pageCount} pages, ${duration}ms)`);
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    await supabase.from('snapshots').update({
+      status: 'error', error_message: err.message, duration_ms: duration,
+    }).eq('id', snapshotId);
+    console.error(`  ✗ ${name}: ${err.message}`);
+  }
+}
+
+async function main() {
+  console.log('=== FUB Smart List Pull ===');
+  console.log(`Time: ${new Date().toISOString()}`);
+  for (const list of TRACKED_LISTS) {
+    await pullList(list);
+    await sleep(1000);
+  }
+  console.log('\n=== Done ===');
+}
+
+main().catch((err) => {
+  console.error('Fatal error:', err);
+  process.exit(1);
+});
