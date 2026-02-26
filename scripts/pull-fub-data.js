@@ -55,18 +55,6 @@ function processPerson(person) {
     hasRecentTwoWay: daysBetween(lastTwoWay) !== null && daysBetween(lastTwoWay) <= 14,
     hasSiteActivity14d: daysBetween(lastSiteVisit) !== null && daysBetween(lastSiteVisit) <= 14,
     noAttempt30d: daysBetween(lastAttempt) === null || daysBetween(lastAttempt) > 30,
-    detail: {
-      fub_person_id: person.id,
-      person_name: `${person.firstName || ''} ${person.lastName || ''}`.trim(),
-      stage: person.stage || null,
-      source: person.source || null,
-      tags: person.tags || [],
-      last_attempt_date: lastAttempt,
-      last_two_way_date: lastTwoWay,
-      last_site_visit_date: lastSiteVisit,
-      favorites_count: person.favoritesCount || 0,
-      timeframe: person.timeFrame || null,
-    },
   };
 }
 
@@ -104,7 +92,7 @@ async function pullList(listConfig) {
 
   const snapshotId = snap.id;
   const agentBuckets = {};
-  let url = `https://api.followupboss.com/v1/people?listId=${fub_list_id}&limit=100&fields=id,firstName,lastName,assignedUserId,lastOutboundAttempt,lastAttemptedContact,lastTwoWayCommunication,lastCommunication,lastSiteVisit,lastPropertySearch,favoritesCount,timeFrame,stage,source,tags`;
+  let url = `https://api.followupboss.com/v1/people?listId=${fub_list_id}&limit=100`;
   let pageCount = 0;
   let totalPeople = 0;
 
