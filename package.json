@@ -1,0 +1,13 @@
+{
+  "name": "fub-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pull Follow Up Boss smart list data into Supabase",
+  "scripts": {
+    "pull": "node scripts/pull-fub-data.js",
+    "sync-agents": "node scripts/sync-agents.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  }
+}
