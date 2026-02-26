@@ -1,0 +1,38 @@
+name: Pull FUB Data
+
+on:
+  schedule:
+    - cron: '0 16 * * 1-5'
+    - cron: '0 0 * * 2-6'
+  workflow_dispatch:
+
+jobs:
+  pull-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pull FUB smart list data
+        env:
+          FUB_API_KEY: ${{ secrets.FUB_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/pull-fub-data.js
+
+      - name: Sync agents
+        env:
+          FUB_API_KEY: ${{ secrets.FUB_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/sync-agents.js
