@@ -1339,6 +1339,14 @@
         function renderDrawerChart(data, dates) {
             if (drawerChart) { drawerChart.destroy(); drawerChart = null; }
 
+            // Reset the canvas to avoid stale Chart.js state
+            const container = document.querySelector('.drawer-chart-container');
+            const oldCanvas = document.getElementById('drawerChart');
+            if (oldCanvas) oldCanvas.remove();
+            const newCanvas = document.createElement('canvas');
+            newCanvas.id = 'drawerChart';
+            container.appendChild(newCanvas);
+
             const lineColors = ['#C75912', '#2D8A4E', '#B8860B', '#5B7FD6', '#C62828', '#7B5EA7', '#CD763D', '#1E88E5', '#43A047'];
             const datasets = smartLists.map((sl, i) => ({
                 label: sl.name.length > 20 ? sl.name.slice(0, 18) + '…' : sl.name,
@@ -1358,8 +1366,10 @@
                 return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             });
 
-            // Delay chart creation to ensure canvas has dimensions after drawer transition
-            requestAnimationFrame(() => {
+            // Use setTimeout to ensure canvas has dimensions; guard against closed drawer
+            const currentAgent = drawerAgentId;
+            setTimeout(() => {
+                if (drawerAgentId !== currentAgent) return; // drawer closed or switched
                 const canvas = document.getElementById('drawerChart');
                 if (!canvas) return;
                 drawerChart = new Chart(canvas, {
@@ -1393,9 +1403,9 @@
                         }
                     }
                 });
-                // Force resize after creation in case container was still transitioning
-                setTimeout(() => { if (drawerChart) drawerChart.resize(); }, 400);
-            });
+                // Force resize after drawer transition completes
+                setTimeout(() => { if (drawerChart) drawerChart.resize(); }, 350);
+            }, 50);
         }
 
         function renderDrawerTable(data, dates) {
