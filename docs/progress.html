@@ -287,35 +287,24 @@
             font-family: Georgia, serif;
         }
         .th-info:hover { background: rgba(255,255,255,0.3); color: #fff; }
+        .th-info.show-tip .th-tip { display: block; }
         .th-info .th-tip {
             display: none;
-            position: absolute;
-            bottom: calc(100% + 8px);
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--dune);
+            position: fixed;
+            z-index: 9999;
+            background: #3a3a3a;
             color: white;
             padding: 8px 12px;
             border-radius: 6px;
             font-size: 11px;
             font-weight: 400;
+            font-style: normal;
             white-space: nowrap;
-            z-index: 100;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.35);
             line-height: 1.6;
             text-align: left;
             pointer-events: none;
         }
-        .th-info .th-tip::after {
-            content: '';
-            position: absolute;
-            top: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            border: 5px solid transparent;
-            border-top-color: var(--dune);
-        }
-        .th-info:hover .th-tip { display: block; }
         .th-tip-green { color: #66bb6a; }
         .th-tip-yellow { color: #fdd835; }
         .th-tip-red { color: #ef5350; }
@@ -959,6 +948,23 @@
                 + `<span class="th-tip-red">● Red:</span> &gt; ${t.yellow_max}`
                 + `</span></span>`;
         }
+
+        // ── Tooltip positioning (fixed, escapes overflow containers) ──
+        document.addEventListener('mouseenter', function(e) {
+            const info = e.target.closest('.th-info');
+            if (!info) return;
+            const tip = info.querySelector('.th-tip');
+            if (!tip) return;
+            info.classList.add('show-tip');
+            const rect = info.getBoundingClientRect();
+            tip.style.left = rect.left + rect.width / 2 - tip.offsetWidth / 2 + 'px';
+            tip.style.top = rect.bottom + 6 + 'px';
+        }, true);
+        document.addEventListener('mouseleave', function(e) {
+            const info = e.target.closest('.th-info');
+            if (!info) return;
+            info.classList.remove('show-tip');
+        }, true);
 
         // ── Build Agent Matrix ──
         function buildMatrix(rows) {
