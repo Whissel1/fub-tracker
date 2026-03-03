@@ -287,7 +287,6 @@
             font-family: Georgia, serif;
         }
         .th-info:hover { background: rgba(255,255,255,0.3); color: #fff; }
-        .th-info.show-tip .th-tip { display: block; }
         .th-info .th-tip {
             display: none;
             position: fixed;
@@ -950,21 +949,31 @@
         }
 
         // ── Tooltip positioning (fixed, escapes overflow containers) ──
-        document.addEventListener('mouseenter', function(e) {
+        document.addEventListener('mouseover', function(e) {
             const info = e.target.closest('.th-info');
             if (!info) return;
             const tip = info.querySelector('.th-tip');
             if (!tip) return;
-            info.classList.add('show-tip');
+            // show off-screen first to measure, then position
+            tip.style.visibility = 'hidden';
+            tip.style.display = 'block';
             const rect = info.getBoundingClientRect();
-            tip.style.left = rect.left + rect.width / 2 - tip.offsetWidth / 2 + 'px';
+            const tw = tip.offsetWidth;
+            let left = rect.left + rect.width / 2 - tw / 2;
+            if (left < 4) left = 4;
+            if (left + tw > window.innerWidth - 4) left = window.innerWidth - 4 - tw;
+            tip.style.left = left + 'px';
             tip.style.top = rect.bottom + 6 + 'px';
-        }, true);
-        document.addEventListener('mouseleave', function(e) {
+            tip.style.visibility = '';
+        });
+        document.addEventListener('mouseout', function(e) {
             const info = e.target.closest('.th-info');
             if (!info) return;
-            info.classList.remove('show-tip');
-        }, true);
+            // only hide if we truly left .th-info (not moving to a child)
+            if (info.contains(e.relatedTarget)) return;
+            const tip = info.querySelector('.th-tip');
+            if (tip) tip.style.display = 'none';
+        });
 
         // ── Build Agent Matrix ──
         function buildMatrix(rows) {
