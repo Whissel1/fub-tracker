@@ -266,6 +266,50 @@
             opacity: 1;
         }
 
+        /* ── Threshold Info Tooltip ── */
+        .th-info {
+            position: relative;
+            display: inline-block;
+            margin-left: 4px;
+            cursor: help;
+            font-size: 11px;
+            opacity: 0.6;
+            vertical-align: middle;
+        }
+        .th-info:hover { opacity: 1; }
+        .th-info .th-tip {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--dune);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 400;
+            white-space: nowrap;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+            line-height: 1.6;
+            text-align: left;
+            pointer-events: none;
+        }
+        .th-info .th-tip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: var(--dune);
+        }
+        .th-info:hover .th-tip { display: block; }
+        .th-tip-green { color: #66bb6a; }
+        .th-tip-yellow { color: #fdd835; }
+        .th-tip-red { color: #ef5350; }
+
         .matrix-table tbody tr {
             transition: background 0.15s;
         }
@@ -896,6 +940,16 @@
             return 'red';
         }
 
+        function thresholdTip(listId) {
+            const t = thresholds[listId];
+            if (!t) return '';
+            return `<span class="th-info">ⓘ<span class="th-tip">`
+                + `<span class="th-tip-green">● Green:</span> ≤ ${t.green_max}<br>`
+                + `<span class="th-tip-yellow">● Yellow:</span> ≤ ${t.yellow_max}<br>`
+                + `<span class="th-tip-red">● Red:</span> &gt; ${t.yellow_max}`
+                + `</span></span>`;
+        }
+
         // ── Build Agent Matrix ──
         function buildMatrix(rows) {
             const agentMap = {};
@@ -1112,7 +1166,7 @@
                 const abbr = sl.name.length > 14 ? sl.name.slice(0, 12) + '…' : sl.name;
                 const cls = sortCol === sl.id ? 'sorted' : '';
                 const arrow = sortCol === sl.id ? (sortDir === 'asc' ? '▲' : '▼') : '↕';
-                headerHTML += `<th class="${cls}" onclick="setSort(${sl.id})" title="${sl.name}">${abbr} <span class="sort-arrow">${arrow}</span></th>`;
+                headerHTML += `<th class="${cls}" onclick="setSort(${sl.id})" title="${sl.name}">${abbr} ${thresholdTip(sl.id)}<span class="sort-arrow">${arrow}</span></th>`;
             }
             headerHTML += `<th class="${sortCol === 'total' ? 'sorted' : ''}" onclick="setSort('total')">Total <span class="sort-arrow">${sortCol === 'total' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             headerHTML += '</tr>';
@@ -1373,7 +1427,7 @@
             let html = '<table class="drawer-table"><thead><tr><th>Date</th>';
             for (const sl of smartLists) {
                 const abbr = sl.name.length > 12 ? sl.name.slice(0, 10) + '…' : sl.name;
-                html += `<th title="${sl.name}">${abbr}</th>`;
+                html += `<th title="${sl.name}">${abbr} ${thresholdTip(sl.id)}</th>`;
             }
             html += '</tr></thead><tbody>';
 
