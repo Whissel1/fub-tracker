@@ -1230,9 +1230,12 @@
             document.body.style.overflow = '';
             drawerAgentId = null;
             if (drawerChart) {
-                drawerChart.destroy();
+                try { drawerChart.destroy(); } catch(e) {}
                 drawerChart = null;
             }
+            // Wipe the canvas so next open gets a completely fresh element
+            const container = document.querySelector('.drawer-chart-container');
+            if (container) container.innerHTML = '<canvas id="drawerChart"></canvas>';
         }
 
         function setDrawerRange(days) {
@@ -1337,15 +1340,19 @@
         }
 
         function renderDrawerChart(data, dates) {
-            if (drawerChart) { drawerChart.destroy(); drawerChart = null; }
+            // Fully destroy any prior chart instance
+            if (drawerChart) { try { drawerChart.destroy(); } catch(e) {} drawerChart = null; }
 
-            // Reset the canvas to avoid stale Chart.js state
+            // Replace canvas element entirely to guarantee clean Chart.js state
             const container = document.querySelector('.drawer-chart-container');
-            const oldCanvas = document.getElementById('drawerChart');
-            if (oldCanvas) oldCanvas.remove();
-            const newCanvas = document.createElement('canvas');
-            newCanvas.id = 'drawerChart';
-            container.appendChild(newCanvas);
+            container.innerHTML = '<canvas id="drawerChart"></canvas>';
+            const canvas = document.getElementById('drawerChart');
+
+            // Give the canvas explicit dimensions so Chart.js doesn't get zero-size
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+            canvas.width = container.offsetWidth || 700;
+            canvas.height = container.offsetHeight || 280;
 
             const lineColors = ['#C75912', '#2D8A4E', '#B8860B', '#5B7FD6', '#C62828', '#7B5EA7', '#CD763D', '#1E88E5', '#43A047'];
             const datasets = smartLists.map((sl, i) => ({
@@ -1366,18 +1373,15 @@
                 return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             });
 
-            // Use setTimeout to ensure canvas has dimensions; guard against closed drawer
-            const currentAgent = drawerAgentId;
-            setTimeout(() => {
-                if (drawerAgentId !== currentAgent) return; // drawer closed or switched
-                const canvas = document.getElementById('drawerChart');
-                if (!canvas) return;
+            // Create chart synchronously — no setTimeout race conditions
+            try {
                 drawerChart = new Chart(canvas, {
                     type: 'line',
                     data: { labels: shortDates, datasets },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        animation: { duration: 400 },
                         interaction: { mode: 'index', intersect: false },
                         plugins: {
                             legend: {
@@ -1403,9 +1407,12 @@
                         }
                     }
                 });
-                // Force resize after drawer transition completes
-                setTimeout(() => { if (drawerChart) drawerChart.resize(); }, 350);
-            }, 50);
+            } catch(e) {
+                console.warn('Chart render error:', e);
+            }
+
+            // Resize after drawer slide-in transition completes
+            setTimeout(() => { if (drawerChart) try { drawerChart.resize(); } catch(e) {} }, 400);
         }
 
         function renderDrawerTable(data, dates) {
