@@ -269,14 +269,24 @@
         /* ── Threshold Info Tooltip ── */
         .th-info {
             position: relative;
-            display: inline-block;
-            margin-left: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 3px;
             cursor: help;
-            font-size: 11px;
-            opacity: 0.6;
+            font-size: 9px;
+            font-style: italic;
+            font-weight: 700;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: rgba(255,255,255,0.6);
             vertical-align: middle;
+            font-family: Georgia, serif;
         }
-        .th-info:hover { opacity: 1; }
+        .th-info:hover { background: rgba(255,255,255,0.3); color: #fff; }
         .th-info .th-tip {
             display: none;
             position: absolute;
@@ -943,7 +953,7 @@
         function thresholdTip(listId) {
             const t = thresholds[listId];
             if (!t) return '';
-            return `<span class="th-info">ⓘ<span class="th-tip">`
+            return `<span class="th-info" onclick="event.stopPropagation()">i<span class="th-tip">`
                 + `<span class="th-tip-green">● Green:</span> ≤ ${t.green_max}<br>`
                 + `<span class="th-tip-yellow">● Yellow:</span> ≤ ${t.yellow_max}<br>`
                 + `<span class="th-tip-red">● Red:</span> &gt; ${t.yellow_max}`
