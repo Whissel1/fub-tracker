@@ -287,10 +287,10 @@
             font-family: Georgia, serif;
         }
         .th-info:hover { background: rgba(255,255,255,0.3); color: #fff; }
-        .th-info .th-tip {
+        #globalTip {
             display: none;
             position: fixed;
-            z-index: 9999;
+            z-index: 99999;
             background: #3a3a3a;
             color: white;
             padding: 8px 12px;
@@ -941,38 +941,39 @@
         function thresholdTip(listId) {
             const t = thresholds[listId];
             if (!t) return '';
-            return `<span class="th-info" onclick="event.stopPropagation()">i<span class="th-tip">`
-                + `<span class="th-tip-green">● Green:</span> ≤ ${t.green_max}<br>`
-                + `<span class="th-tip-yellow">● Yellow:</span> ≤ ${t.yellow_max}<br>`
-                + `<span class="th-tip-red">● Red:</span> &gt; ${t.yellow_max}`
-                + `</span></span>`;
+            return `<span class="th-info" onclick="event.stopPropagation()" data-green="${t.green_max}" data-yellow="${t.yellow_max}">i</span>`;
         }
 
-        // ── Tooltip positioning (fixed, escapes overflow containers) ──
+        // ── Global tooltip (lives on body, outside any transform context) ──
+        const globalTip = document.createElement('div');
+        globalTip.id = 'globalTip';
+        document.body.appendChild(globalTip);
+
         document.addEventListener('mouseover', function(e) {
             const info = e.target.closest('.th-info');
             if (!info) return;
-            const tip = info.querySelector('.th-tip');
-            if (!tip) return;
-            // show off-screen first to measure, then position
-            tip.style.visibility = 'hidden';
-            tip.style.display = 'block';
+            const g = info.dataset.green, y = info.dataset.yellow;
+            if (!g) return;
+            globalTip.innerHTML =
+                `<span class="th-tip-green">● Green:</span> ≤ ${g}<br>`
+                + `<span class="th-tip-yellow">● Yellow:</span> ≤ ${y}<br>`
+                + `<span class="th-tip-red">● Red:</span> &gt; ${y}`;
+            globalTip.style.display = 'block';
+            globalTip.style.visibility = 'hidden';
             const rect = info.getBoundingClientRect();
-            const tw = tip.offsetWidth;
+            const tw = globalTip.offsetWidth;
             let left = rect.left + rect.width / 2 - tw / 2;
             if (left < 4) left = 4;
             if (left + tw > window.innerWidth - 4) left = window.innerWidth - 4 - tw;
-            tip.style.left = left + 'px';
-            tip.style.top = rect.bottom + 6 + 'px';
-            tip.style.visibility = '';
+            globalTip.style.left = left + 'px';
+            globalTip.style.top = rect.bottom + 6 + 'px';
+            globalTip.style.visibility = '';
         });
         document.addEventListener('mouseout', function(e) {
             const info = e.target.closest('.th-info');
             if (!info) return;
-            // only hide if we truly left .th-info (not moving to a child)
             if (info.contains(e.relatedTarget)) return;
-            const tip = info.querySelector('.th-tip');
-            if (tip) tip.style.display = 'none';
+            globalTip.style.display = 'none';
         });
 
         // ── Build Agent Matrix ──
