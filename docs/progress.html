@@ -238,6 +238,7 @@
             font-size: 12px;
             position: sticky;
             top: 0;
+            z-index: 2;
             white-space: nowrap;
             cursor: pointer;
             user-select: none;
@@ -1422,6 +1423,7 @@
                 bodyHTML += '</tr>';
             }
             tbody.innerHTML = bodyHTML;
+            updateStreakCells();
         }
 
         // ── Agent Drawer ──
