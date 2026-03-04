@@ -127,6 +127,167 @@
         .refresh-btn:hover { background: var(--orange-dark); }
         .refresh-btn:disabled { background: var(--almond); cursor: not-allowed; }
 
+        .manage-btn {
+            padding: 8px 14px;
+            background: transparent;
+            color: var(--dune);
+            border: 1.5px solid var(--almond);
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .manage-btn:hover { border-color: var(--blaze-orange); color: var(--blaze-orange); }
+        .manage-btn svg { width: 16px; height: 16px; }
+
+        /* ── Manage Agents Modal ── */
+        .manage-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(53, 53, 53, 0.45);
+            z-index: 300;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .manage-overlay.open { opacity: 1; pointer-events: auto; }
+
+        .manage-modal {
+            background: var(--warm-white);
+            border-radius: 16px;
+            width: 520px;
+            max-width: 95vw;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 16px 48px rgba(53, 53, 53, 0.2);
+            transform: scale(0.95);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .manage-overlay.open .manage-modal { transform: scale(1); }
+
+        .manage-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px 28px 16px;
+            border-bottom: 1px solid var(--almond);
+        }
+        .manage-modal-header h2 {
+            font-family: 'Playfair Display', Georgia, serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--dune);
+            margin: 0;
+        }
+        .manage-modal-close {
+            background: none;
+            border: none;
+            font-size: 22px;
+            color: #999;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: all 0.15s;
+        }
+        .manage-modal-close:hover { background: var(--almond); color: var(--dune); }
+
+        .manage-search {
+            margin: 16px 28px 0;
+            padding: 10px 14px;
+            border: 1.5px solid var(--almond);
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            width: calc(100% - 56px);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .manage-search:focus { border-color: var(--blaze-orange); }
+
+        .manage-agent-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px 28px 24px;
+        }
+
+        .manage-role-group { margin-bottom: 16px; }
+        .manage-role-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #999;
+            margin-bottom: 6px;
+            padding-left: 2px;
+        }
+
+        .manage-agent-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 8px;
+            transition: background 0.15s;
+        }
+        .manage-agent-row:hover { background: white; }
+        .manage-agent-name {
+            font-size: 14px;
+            color: var(--dune);
+            font-weight: 500;
+        }
+        .manage-agent-name.hidden-agent { color: #999; text-decoration: line-through; }
+
+        /* Toggle Switch */
+        .toggle-switch {
+            position: relative;
+            width: 40px;
+            height: 22px;
+            flex-shrink: 0;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            inset: 0;
+            background: var(--almond);
+            border-radius: 22px;
+            cursor: pointer;
+            transition: background 0.25s;
+        }
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.25s;
+        }
+        .toggle-switch input:checked + .toggle-slider { background: var(--blaze-orange); }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+        .manage-count {
+            text-align: center;
+            padding: 12px 28px;
+            font-size: 12px;
+            color: #999;
+            border-top: 1px solid var(--almond);
+        }
+
         /* KPI Cards */
         .kpi-row {
             display: grid;
@@ -703,7 +864,8 @@
         /* Print */
         @media print {
             body { background: white; }
-            .refresh-btn, .search-box, .filter-select { display: none; }
+            .refresh-btn, .search-box, .filter-select, .manage-btn { display: none; }
+            .manage-overlay { display: none !important; }
             .table-card { overflow: visible; }
             .chart-card { break-inside: avoid; }
             .drawer-overlay, .agent-drawer { display: none !important; }
@@ -732,6 +894,10 @@
                     <option value="yellow">Yellow + Red</option>
                     <option value="green">Green Only</option>
                 </select>
+                <button class="manage-btn" onclick="openManageAgents()" title="Manage visible agents">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    Agents
+                </button>
                 <button class="refresh-btn" id="refreshBtn" onclick="loadDashboard()">Refresh</button>
             </div>
         </header>
@@ -837,6 +1003,21 @@
                 </div>
             </div>
         </div>
+
+        <!-- Manage Agents Modal -->
+        <div class="manage-overlay" id="manageOverlay" onclick="if(event.target===this)closeManageAgents()">
+            <div class="manage-modal">
+                <div class="manage-modal-header">
+                    <h2>Manage Agents</h2>
+                    <button class="manage-modal-close" onclick="closeManageAgents()">✕</button>
+                </div>
+                <input type="text" class="manage-search" id="manageSearch" placeholder="Search agents…" oninput="filterManageList()" />
+                <div class="manage-agent-list" id="manageAgentList">
+                    <div style="text-align:center;padding:40px;color:#999;">Loading agents…</div>
+                </div>
+                <div class="manage-count" id="manageCount"></div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -878,6 +1059,117 @@
         let callData = {};           // { agentId: { outPerDay } }
         let callDataCache = {};      // { agentId: [ daily rows ] } for drawer
         let callDataLoaded = false;
+
+        // ── Manage Agents Modal ──
+        let manageAgentsCache = [];
+
+        async function openManageAgents() {
+            const overlay = document.getElementById('manageOverlay');
+            overlay.classList.add('open');
+            document.getElementById('manageSearch').value = '';
+
+            try {
+                const { data, error } = await sb
+                    .from('agents')
+                    .select('id, name, role, is_active, visible')
+                    .eq('is_active', true)
+                    .order('name');
+                if (error) throw error;
+                manageAgentsCache = data || [];
+                renderManageList(manageAgentsCache);
+            } catch (err) {
+                document.getElementById('manageAgentList').innerHTML =
+                    `<div style="text-align:center;padding:40px;color:#C62828;">Failed to load agents: ${err.message}</div>`;
+            }
+        }
+
+        function closeManageAgents(skipReload) {
+            document.getElementById('manageOverlay').classList.remove('open');
+            if (!skipReload) loadDashboard();
+        }
+
+        function filterManageList() {
+            const q = document.getElementById('manageSearch').value.toLowerCase().trim();
+            const filtered = q
+                ? manageAgentsCache.filter(a => a.name.toLowerCase().includes(q))
+                : manageAgentsCache;
+            renderManageList(filtered);
+        }
+
+        function renderManageList(agents) {
+            const container = document.getElementById('manageAgentList');
+            if (!agents.length) {
+                container.innerHTML = '<div style="text-align:center;padding:40px;color:#999;">No agents found</div>';
+                document.getElementById('manageCount').textContent = '';
+                return;
+            }
+
+            // Group by role
+            const groups = {};
+            for (const a of agents) {
+                const role = a.role || 'Other';
+                if (!groups[role]) groups[role] = [];
+                groups[role].push(a);
+            }
+
+            // Sort roles: Agent first, then Broker, then others
+            const roleOrder = ['Agent', 'Broker', 'Lender'];
+            const sortedRoles = Object.keys(groups).sort((a, b) => {
+                const ai = roleOrder.indexOf(a), bi = roleOrder.indexOf(b);
+                return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+            });
+
+            let html = '';
+            for (const role of sortedRoles) {
+                html += `<div class="manage-role-group">`;
+                html += `<div class="manage-role-label">${role}s (${groups[role].length})</div>`;
+                for (const a of groups[role]) {
+                    const checked = a.visible ? 'checked' : '';
+                    const nameClass = a.visible ? '' : ' hidden-agent';
+                    html += `<div class="manage-agent-row">
+                        <span class="manage-agent-name${nameClass}" id="maName${a.id}">${a.name}</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" ${checked} onchange="toggleAgentVisible(${a.id}, this.checked)" />
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>`;
+                }
+                html += `</div>`;
+            }
+            container.innerHTML = html;
+
+            const visible = agents.filter(a => a.visible).length;
+            document.getElementById('manageCount').textContent =
+                `${visible} of ${agents.length} agents visible on dashboard`;
+        }
+
+        async function toggleAgentVisible(agentId, visible) {
+            // Optimistic UI update
+            const nameEl = document.getElementById('maName' + agentId);
+            if (nameEl) {
+                nameEl.classList.toggle('hidden-agent', !visible);
+            }
+            const agent = manageAgentsCache.find(a => a.id === agentId);
+            if (agent) agent.visible = visible;
+
+            // Update count
+            const visCount = manageAgentsCache.filter(a => a.visible).length;
+            document.getElementById('manageCount').textContent =
+                `${visCount} of ${manageAgentsCache.length} agents visible on dashboard`;
+
+            try {
+                const { error } = await sb
+                    .from('agents')
+                    .update({ visible })
+                    .eq('id', agentId);
+                if (error) throw error;
+            } catch (err) {
+                // Revert on failure
+                if (agent) agent.visible = !visible;
+                if (nameEl) nameEl.classList.toggle('hidden-agent', visible);
+                alert('Failed to update: ' + err.message);
+            }
+        }
 
         // ── Data Loading ──
         async function loadDashboard() {
@@ -932,21 +1224,25 @@
                 if (countErr) throw countErr;
                 allCounts = countData;
 
-                // 5. Load agent names
+                // 5. Load agent names (only visible agents)
                 const agentIds = [...new Set(allCounts.map(c => c.agent_id))];
                 const { data: agentData, error: agentErr } = await sb
                     .from('agents')
-                    .select('id, name')
-                    .in('id', agentIds);
+                    .select('id, name, role')
+                    .in('id', agentIds)
+                    .eq('visible', true);
                 if (agentErr) throw agentErr;
                 const agentMap = {};
-                for (const a of agentData) agentMap[a.id] = a.name;
+                for (const a of agentData) agentMap[a.id] = { name: a.name, role: a.role };
 
-                // 6. Merge
-                allAgentRows = allCounts.map(c => ({
-                    ...c,
-                    agent_name: agentMap[c.agent_id] || `Agent ${c.agent_id}`,
-                }));
+                // 6. Merge (exclude hidden agents)
+                allAgentRows = allCounts
+                    .filter(c => agentMap[c.agent_id])
+                    .map(c => ({
+                        ...c,
+                        agent_name: agentMap[c.agent_id].name,
+                        agent_role: agentMap[c.agent_id].role,
+                    }));
 
                 renderDashboard();
                 document.getElementById('errorBanner').style.display = 'none';
