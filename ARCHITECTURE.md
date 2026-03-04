@@ -196,11 +196,15 @@ Manage Agents modal). Dashboard shows agents where `visible = true`.
 
 **RLS Policies:**
 
-| Policy Name                | Operation | Role         | Notes                                      |
-|----------------------------|-----------|--------------|--------------------------------------------|
-| `Allow read access`        | SELECT    | public       | Dashboard reads via anon key               |
-| `Service role full access` | ALL       | service_role | GitHub Actions scripts use service role key |
-| `Allow anon update visible`| UPDATE    | anon         | Manage Agents toggle writes via anon key   |
+| Policy Name                | Operation | Role   | Notes                                    |
+|----------------------------|-----------|--------|------------------------------------------|
+| `Allow read access`        | SELECT    | public | Dashboard reads via anon key              |
+| `Allow anon update visible`| UPDATE    | anon   | Manage Agents toggle writes via anon key  |
+
+**Note:** No service_role policy needed — the `service_role` key used by
+GitHub Actions **bypasses RLS entirely**. Redundant "Service role full
+access" policies were removed 2026-03-04 (they caused unnecessary
+`auth_rls_initplan` overhead and Supabase linter warnings).
 
 ⚠️ The anon UPDATE policy is intentionally broad (allows updating any
 column, not just `visible`). This should be tightened to a column-specific
@@ -409,7 +413,8 @@ Security (RLS)** policies. The anon key can:
 
 It **cannot** INSERT, DELETE, or modify any other table. All write-heavy
 operations (syncing agents, pulling calls, pulling SmartLists) go through
-GitHub Actions using the **service role key**, which bypasses RLS.
+GitHub Actions using the **service role key**, which bypasses RLS entirely.
+No RLS policies are needed (or should be created) for service_role access.
 
 **Important:** Supabase silently returns empty results (no error) when an
 RLS-denied operation is attempted. This makes debugging RLS issues
