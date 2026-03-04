@@ -34,6 +34,7 @@ _Completed items moved here with ship date for reference._
 | 2026-03-04 | Upgrade to 15-min refresh intervals (6am–5pm PST) |
 | 2026-03-04 | Latest pull timestamp display (Pacific time, full datetime) |
 | 2026-03-04 | Fix Manage Agents toggle persistence (RLS policy for anon UPDATE) |
+| 2026-03-04 | Fix streak ring/dots mismatch (Set-based dedup, unified data source, remove staleness cache) |
 
 ---
 

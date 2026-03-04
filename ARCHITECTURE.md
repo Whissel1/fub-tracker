@@ -492,13 +492,59 @@ day (`outPerDay`), shown as a whole number (rounded, not decimal).
 
 ## Business Logic: Streaks
 
-A "good day" = agent meets threshold on 7+ out of 9 SmartLists. The
-streak counter tracks consecutive good days ending at the most recent
-date.
+A "good day" = agent meets threshold on 7+ out of 9 SmartLists
+(`STREAK_GOOD_THRESHOLD = 7`). The streak counter tracks consecutive
+good days ending at the most recent date. Data starts from
+`STREAK_START = '2026-02-26'`.
+
+### Calculation: `calcStreakFromSnapshots(history)`
+
+Takes an array of `agent_list_counts` rows and returns `{ current, best,
+dailyResults }`. The function deduplicates by list_id per day using a
+`Set` — if a list appears green in ANY snapshot on a given day, the agent
+gets credit for that list once. This prevents double-counting when
+multiple snapshots exist per day (the system pulls ~2 snapshots/day per
+SmartList, so without dedup an agent with 4 green lists would register
+as 8).
+
+`current` = consecutive good days counting backward from the most recent
+date. `best` = longest consecutive run across all dates. `dailyResults`
+= array of `{ date, good }` objects for the dot trail.
+
+### Streak Tiers
+
+| Range   | Label      | Color   |
+|---------|------------|---------|
+| 1–6     | Building   | #f4a261 |
+| 7–13    | Consistent | #2a9d8f |
+| 14–29   | Strong     | #264653 |
+| 30+     | Elite      | #e63946 |
+
+### Data Flow
+
+1. **Page load** → `loadAllStreaks()` fetches `agent_list_counts` for all
+   agents, runs `calcStreakFromSnapshots()` for each, upserts results into
+   `agent_streaks` DB table, and populates the in-memory `streakData` map.
+   Recalculation runs on every page load (no staleness caching) to ensure
+   correctness as new snapshots arrive throughout the day.
+
+2. **Matrix table** → `updateStreakCells()` reads from `streakData` map to
+   render mini-rings in each agent's streak column.
+
+3. **Agent drawer** → `renderDrawerStreak()` uses on-the-fly
+   `calcStreakFromSnapshots()` for BOTH the ring number AND the dot trail.
+   This guarantees the ring and dots always agree (single source of truth).
+   The drawer fetches its own history via `loadDrawerHistory()` which uses
+   `pulled_at` timestamp filters vs the date-based `pull_date` filter in
+   `loadAllStreaks`, but `calcStreakFromSnapshots` deduplicates by list_id
+   regardless of how many rows per day exist.
+
+### Storage: `agent_streaks` Table
 
 Streak data is stored in `agent_streaks` and is **independent** of raw
 snapshot data. Deleting old `snapshots` and `agent_list_counts` rows does
-not impact streak scores.
+not impact streak scores (the DB values are recalculated from current
+data on each page load and upserted).
 
 ---
 
