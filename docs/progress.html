@@ -1375,6 +1375,7 @@
             // history = [{ date, list_id, lead_count }]
             // Group by date, count green lists per day (Set-based dedup)
             const dayMap = {};
+            const dayPresence = {}; // Track which lists have explicit data per day
             // Exclude current day (Pacific time) — incomplete data shouldn't count for or against streak
             const now = new Date();
             const pacificOffset = now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
@@ -1383,8 +1384,20 @@
                 if (h.date < STREAK_START) continue;
                 if (h.date === todayPacific) continue; // Skip today — only completed days count
                 if (!dayMap[h.date]) dayMap[h.date] = new Set();
+                if (!dayPresence[h.date]) dayPresence[h.date] = new Set();
+                dayPresence[h.date].add(h.list_id); // Track explicit presence
                 const status = getStatus(h.lead_count, h.list_id);
                 if (status === 'green') dayMap[h.date].add(h.list_id);
+            }
+            // Missing lists (no agent_list_counts row) = 0 leads = implicitly green
+            // If an agent isn't on a SmartList, they have 0 leads — which is always ≤ green_max
+            const allListIds = Object.keys(thresholds).map(Number);
+            for (const date of Object.keys(dayMap)) {
+                for (const listId of allListIds) {
+                    if (!dayPresence[date].has(listId)) {
+                        dayMap[date].add(listId); // 0 leads is always green
+                    }
+                }
             }
             const sortedDates = Object.keys(dayMap).sort();
             const dailyResults = sortedDates.map(d => ({ date: d, good: dayMap[d].size >= STREAK_GOOD_THRESHOLD }));
