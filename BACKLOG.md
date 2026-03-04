@@ -140,11 +140,28 @@ Store the first smart list snapshot of each day separately to enable showing dai
 
 Replace streak dots with a 30 or 90-day colored grid table. Substantial UX project. Current "X/7 good" label is the quick fix; this would be the full redesign if the concept is worth pursuing.
 
-#### Settings Page
-**Priority:** Deferred
-**Status:** Blocked — requires auth/user management
+#### User Authentication (Google SSO) + Settings Page
+**Priority:** Deferred — fully scoped, ready to build when needed
+**Status:** Planned (4-6 hours total across 3 phases)
+**Depends on:** Google Workspace admin access for OAuth client creation
 
-Full settings UI with user authentication and role-based access. Explicitly deferred as future scope. Prerequisite for any admin-only features.
+**Current state:** Zero auth. Supabase anon key hardcoded, all reads public, one write (`agents.visible` UPDATE) open to anyone via broad RLS policy. Backend automation (GitHub Actions) uses service_role key and is unaffected by auth changes.
+
+**Architecture:** Google SSO via Supabase Auth using PKCE flow (works on static GitHub Pages). Domain restricted to `@whisselrealty.com` via Google `hd` parameter + app-side email check + RLS as the real security boundary. Reads stay public (no login to view dashboard). Auth only gates Manage Agents and future write operations.
+
+**Schema changes:** Two new columns on `agents` table — `auth_user_id UUID REFERENCES auth.users(id)` for user-to-agent mapping (matched via email on first login) and `app_role TEXT DEFAULT 'agent' CHECK (app_role IN ('agent', 'admin'))` for permission tiers. Seeded from FUB roles: Owner/Admin → `app_role = 'admin'`, everyone else → `'agent'`. A `SECURITY DEFINER` function (`link_auth_user()`) handles self-linking so agents can write their own `auth_user_id` without broad UPDATE access.
+
+**RLS redesign:** Drop current broad anon UPDATE → admin-only authenticated UPDATE policy. Reads unchanged.
+
+**Frontend (~90 lines in progress.html):** Auth state management (`initAuth()`, `setCurrentUser()`, `onAuthStateChange`), login/logout UI in header bar, admin gating on Manage Agents button.
+
+**Phase 1 — Backend prep (1-2 hrs, no user impact):** Google Cloud Console OAuth client, Supabase Auth Google provider config, two SQL migrations (add columns, seed app_role), `link_auth_user()` function.
+
+**Phase 2 — Frontend + RLS cutover (3-4 hrs, single deploy):** Auth state JS, login/logout UI, admin gating, RLS policy swap, full OAuth round-trip test.
+
+**Phase 3 — Polish (2-3 hrs, fully deferrable):** Admin UI for role management, auto-set app_role in sync-agents.js for new agents, manual agent-linking UI for email mismatches, optional read-gating.
+
+**Key risks:** Google Workspace admin may need to approve third-party OAuth app (lead time). Email mismatch between Google and FUB accounts causes silent auto-link failure (fixable via SQL or Phase 3 UI). First-admin bootstrapping requires verifying deployer is Owner/Admin in FUB before RLS swap.
 
 ---
 
