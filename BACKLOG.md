@@ -40,6 +40,7 @@ _Completed items moved here with ship date for reference._
 | 2026-03-04 | Fix Supabase 1000-row server cap — paginated `loadAllStreaks` fetches all ~11K rows across multiple `.range()` requests |
 | 2026-03-04 | Exclude current day (Pacific time) from streak calculation — incomplete days don't count for or against |
 | 2026-03-04 | Durable best_streak — `Math.max(computed, stored)` ensures best streak is never lowered even if raw data is pruned |
+| 2026-03-04 | Fix streak calc: treat missing SmartList data as implicitly green — agents with 0 leads (no `agent_list_counts` row) now count as green via `dayPresence` tracking |
 
 ---
 
