@@ -1056,6 +1056,7 @@
         let thresholds = {};
         let latestSnapshotIds = [];
         let pullDate = null;
+        let pullTimestamp = null;
         let sortCol = 'total';
         let sortDir = 'desc';
 
@@ -1221,7 +1222,7 @@
                 // 3. Find latest + previous snapshot per list
                 const { data: snapData, error: snapErr } = await sb
                     .from('snapshots')
-                    .select('id, smart_list_id, pull_date')
+                    .select('id, smart_list_id, pull_date, pulled_at')
                     .eq('status', 'complete')
                     .order('pulled_at', { ascending: false });
                 if (snapErr) throw snapErr;
@@ -1234,6 +1235,8 @@
                 }
                 latestSnapshotIds = Object.values(latestByList).map(s => s.id);
                 pullDate = Object.values(latestByList)[0]?.pull_date || null;
+                // Grab the most recent pulled_at timestamp across all lists
+                pullTimestamp = snapData[0]?.pulled_at || null;
 
                 // 4. Load agent_list_counts for latest snapshots
                 let allCounts = [];
@@ -1787,7 +1790,12 @@
 
         function renderPullMeta() {
             const el = document.getElementById('pullMeta');
-            if (pullDate) {
+            if (pullTimestamp) {
+                const d = new Date(pullTimestamp);
+                const datePart = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Los_Angeles' });
+                const timePart = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' });
+                el.textContent = `Latest pull: ${datePart} at ${timePart} · ${latestSnapshotIds.length} lists`;
+            } else if (pullDate) {
                 const d = new Date(pullDate + 'T00:00:00');
                 el.textContent = `Latest pull: ${d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} · ${latestSnapshotIds.length} lists`;
             }
