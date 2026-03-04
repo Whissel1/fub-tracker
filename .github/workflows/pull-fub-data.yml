@@ -6,18 +6,17 @@
 # other schedulers — see ARCHITECTURE.md for rationale.
 #
 # Schedule overview (PST / UTC):
-#   3am PST  (11:00 UTC) — Agent sync + Calls (overnight lock-in)
-#   7am PST  (15:00 UTC) — Calls + SmartLists (morning open)
-#   9am PST  (17:00 UTC) — Calls + SmartLists
-#  11am PST  (19:00 UTC) — Calls + SmartLists
-#   1pm PST  (21:00 UTC) — Calls + SmartLists
-#   3pm PST  (23:00 UTC) — Calls + SmartLists
-#   5pm PST  (01:00 UTC) — Calls + SmartLists (end of day)
+#   3:00am PST  (11:00 UTC) — Agent sync + Calls only
+#   6:00am–5:00pm PST       — Calls + SmartLists every 15 min
+#
+# The 15-min cadence covers:
+#   6am–3:45pm PST  = */15 at UTC hours 0,14-23
+#   5:00pm PST      = 0 1 UTC (final business-day run)
 #
 # NOTE: During PDT (Mar–Nov), local times shift 1hr later
-# (e.g., the 15:00 UTC run fires at 8am PDT instead of 7am PST).
+# (e.g., the 14:00 UTC run fires at 7am PDT instead of 6am PST).
 # UTC crons stay fixed. This is acceptable — coverage still
-# spans the business day.
+# spans the business day with ample margin.
 # =============================================================
 
 name: FUB Data Sync
@@ -26,13 +25,15 @@ on:
   schedule:
     # 3am PST = 11:00 UTC — agent sync + overnight call lock-in
     - cron: '0 11 * * *'
-    # Business-day refreshes: every 2hrs from 7am–5pm PST
-    - cron: '0 15 * * *'   # 7am PST
-    - cron: '0 17 * * *'   # 9am PST
-    - cron: '0 19 * * *'   # 11am PST
-    - cron: '0 21 * * *'   # 1pm PST
-    - cron: '0 23 * * *'   # 3pm PST
-    - cron: '0 1 * * *'    # 5pm PST
+
+    # Business-day refreshes: every 15 min from 6am–4:45pm PST
+    #   UTC hours 14-23 = 6am–3:45pm PST
+    #   UTC hour 0      = 4pm–4:45pm PST
+    - cron: '*/15 0,14-23 * * *'
+
+    # 5pm PST = 01:00 UTC — final business-day run
+    - cron: '0 1 * * *'
+
   workflow_dispatch:
     # Manual trigger runs ALL steps
 

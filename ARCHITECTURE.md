@@ -37,7 +37,7 @@ agent performance across SmartLists and call activity.
 ┌──────────────┐     ┌─────────────────────┐     ┌──────────────┐
 │  FUB API     │────▶│  GitHub Actions      │────▶│  Supabase    │
 │  /v1/people  │     │  (Node.js scripts)   │     │  (Postgres)  │
-│  /v1/calls   │     │  Scheduled 7x daily  │     │              │
+│  /v1/calls   │     │  Every 15 min        │     │              │
 │  /v1/users   │     └─────────────────────┘     │              │
 └──────────────┘                                  │              │
                      ┌─────────────────────┐     │              │
@@ -65,23 +65,26 @@ only (dashboard buttons, future webhooks). See [Lessons Learned](#lessons-learne
 
 **File:** `.github/workflows/pull-fub-data.yml`
 
-Seven cron triggers provide near-real-time data throughout the business day.
-All times in UTC (PST/PDT offsets shown):
+Three cron entries combine to provide **every-15-minute** refreshes
+throughout the business day. All times in UTC (PST/PDT offsets shown):
 
-| UTC Cron      | PST Time | PDT Time | What Runs                              |
-|---------------|----------|----------|----------------------------------------|
-| `0 11 * * *`  | 3:00 AM  | 4:00 AM  | Agent sync + Call data (overnight)     |
-| `0 15 * * *`  | 7:00 AM  | 8:00 AM  | Calls + SmartLists (morning open)      |
-| `0 17 * * *`  | 9:00 AM  | 10:00 AM | Calls + SmartLists                     |
-| `0 19 * * *`  | 11:00 AM | 12:00 PM | Calls + SmartLists                     |
-| `0 21 * * *`  | 1:00 PM  | 2:00 PM  | Calls + SmartLists                     |
-| `0 23 * * *`  | 3:00 PM  | 4:00 PM  | Calls + SmartLists                     |
-| `0 1 * * *`   | 5:00 PM  | 6:00 PM  | Calls + SmartLists (end of day)        |
+| UTC Cron                 | PST Time           | PDT Time           | What Runs                              |
+|--------------------------|--------------------|--------------------|----------------------------------------|
+| `0 11 * * *`            | 3:00 AM            | 4:00 AM            | Agent sync + Call data (overnight)     |
+| `*/15 0,14-23 * * *`    | 6:00 AM – 4:45 PM  | 7:00 AM – 5:45 PM  | Calls + SmartLists (every 15 min)      |
+| `0 1 * * *`             | 5:00 PM            | 6:00 PM            | Calls + SmartLists (final run)         |
 
-**Why 2-hour intervals?** Team leads monitor the dashboard live throughout
-the day. Call data and SmartList totals need to reflect near-current state.
-The incremental cursor-based sync makes each run lightweight (~seconds for
-a few dozen new calls).
+**Runs per day:** ~46 (1 agent sync + 44 business-hours + 1 final).
+
+**Why 15-minute intervals?** Calls = effort, SmartLists = results. Team
+leads monitor both in real time. The incremental cursor-based call sync is
+extremely lightweight (~seconds for a few dozen new calls). SmartList pulls
+are heavier (~30–60s per run for 9 lists × pagination) but well within the
+30-minute timeout and FUB API limits.
+
+**GitHub Actions minutes budget:** ~46 runs/day × ~1.5 min avg ≈ 70 min/day
+≈ 2,100 min/month. Close to the free tier (2,000 min/month for private
+repos). If overages occur, reduce to `*/20` or use GitHub's paid tier.
 
 **Manual trigger** (`workflow_dispatch`) runs ALL steps.
 
@@ -123,7 +126,7 @@ FUB /v1/users → scripts/sync-agents.js → agents table
 2. Apply `deriveRole()` to map API roles to display roles
 3. Upsert into `agents` table on conflict `id`
 
-### Call Data Pull (every 2hrs, 3am–5pm PST)
+### Call Data Pull (every 15 min, 3am + 6am–5pm PST)
 
 ```
 FUB /v1/calls → scripts/pull-fub-calls.js → call_daily_stats table
@@ -145,7 +148,7 @@ correctly buckets as 2026-03-03, not 2026-03-04.
 **Conversation threshold:** 120 seconds. Any call >= 2 minutes counts as
 a "conversation" in outbound_conversations / inbound_conversations.
 
-### SmartList Snapshot (7am PST + 4pm PST)
+### SmartList Snapshot (every 15 min, 6am–5pm PST)
 
 ```
 FUB /v1/people?smartListId=X → scripts/pull-fub-data.js → snapshots + agent_list_counts
@@ -476,9 +479,9 @@ not impact streak scores.
 | agents             | ~242    | Stable               |
 | smart_lists        | 9       | Static               |
 | thresholds         | 9       | Static               |
-| snapshots          | ~117    | +18/day (9 lists × 2 pulls) |
-| agent_list_counts  | ~10,600 | ~500/day             |
-| call_daily_stats   | ~564    | ~40/day              |
+| snapshots          | ~117    | ~405/day (9 lists × 45 runs) |
+| agent_list_counts  | ~10,600 | ~10,000/day          |
+| call_daily_stats   | ~564    | ~40/day (upsert, not append) |
 | agent_streaks      | ~165    | Stable               |
 
 ### Retention Strategy
