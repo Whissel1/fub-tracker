@@ -1373,10 +1373,15 @@
 
         function calcStreakFromSnapshots(history) {
             // history = [{ date, list_id, lead_count }]
-            // Group by date, count green lists per day
+            // Group by date, count green lists per day (Set-based dedup)
             const dayMap = {};
+            // Exclude current day (Pacific time) — incomplete data shouldn't count for or against streak
+            const now = new Date();
+            const pacificOffset = now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
+            const todayPacific = new Date(pacificOffset).toISOString().slice(0, 10);
             for (const h of history) {
                 if (h.date < STREAK_START) continue;
+                if (h.date === todayPacific) continue; // Skip today — only completed days count
                 if (!dayMap[h.date]) dayMap[h.date] = new Set();
                 const status = getStatus(h.lead_count, h.list_id);
                 if (status === 'green') dayMap[h.date].add(h.list_id);
@@ -1384,7 +1389,7 @@
             const sortedDates = Object.keys(dayMap).sort();
             const dailyResults = sortedDates.map(d => ({ date: d, good: dayMap[d].size >= STREAK_GOOD_THRESHOLD }));
 
-            // Current streak: consecutive good days backward from end
+            // Current streak: consecutive good days backward from most recent completed day
             let current = 0;
             for (let i = dailyResults.length - 1; i >= 0; i--) {
                 if (dailyResults[i].good) current++;
@@ -1428,19 +1433,28 @@
                         const snapDateMap = {};
                         for (const s of snaps) snapDateMap[s.id] = s.pull_date;
 
-                        // Fetch counts for stale agents across all those snapshots
-                        const { data: counts, error: countErr } = await sb
-                            .from('agent_list_counts')
-                            .select('agent_id, smart_list_id, lead_count, snapshot_id')
-                            .in('agent_id', staleIds)
-                            .in('snapshot_id', snapIds)
-                            .limit(50000);
-
-                        if (countErr) { console.error('loadAllStreaks counts query failed:', countErr); }
-                        if (counts && counts.length >= 49000) {
-                            console.warn(`⚠️ Streak query returned ${counts.length} rows — approaching 50K limit. Pre-aggregation needed soon.`);
+                        // Fetch counts for stale agents — PAGINATED to overcome Supabase 1000-row server cap
+                        let counts = [];
+                        let offset = 0;
+                        const PAGE_SIZE = 1000;
+                        let paginationError = null;
+                        while (true) {
+                            const { data: page, error: pageErr } = await sb
+                                .from('agent_list_counts')
+                                .select('agent_id, smart_list_id, lead_count, snapshot_id')
+                                .in('agent_id', staleIds)
+                                .in('snapshot_id', snapIds)
+                                .range(offset, offset + PAGE_SIZE - 1);
+                            if (pageErr) { paginationError = pageErr; console.error('loadAllStreaks pagination error at offset ' + offset + ':', pageErr); break; }
+                            if (!page || page.length === 0) break;
+                            counts = counts.concat(page);
+                            if (page.length < PAGE_SIZE) break; // Last page
+                            offset += PAGE_SIZE;
                         }
-                        if (counts) {
+                        console.log(`📊 Streak data: fetched ${counts.length} rows in ${Math.ceil(offset / PAGE_SIZE) + 1} pages`);
+
+                        if (paginationError) { console.error('loadAllStreaks counts query failed:', paginationError); }
+                        if (counts.length > 0) {
                             // Build history array per agent
                             const byAgent = {};
                             for (const c of counts) {
@@ -1452,16 +1466,19 @@
                                 });
                             }
 
-                            // Calculate and upsert
+                            // Calculate and upsert — DURABLE best_streak: never lower a stored best
                             const upserts = [];
                             for (const id of staleIds) {
                                 const hist = byAgent[id] || [];
                                 const result = calcStreakFromSnapshots(hist);
                                 const lastGood = result.dailyResults.filter(d => d.good).pop();
+                                // Preserve the higher of stored vs computed best_streak
+                                const storedBest = (streakMap[id] && streakMap[id].best_streak) || 0;
+                                const durableBest = Math.max(result.best, storedBest);
                                 upserts.push({
                                     agent_id: id,
                                     current_streak: result.current,
-                                    best_streak: result.best,
+                                    best_streak: durableBest,
                                     last_good_date: lastGood ? lastGood.date : null,
                                     updated_at: new Date().toISOString()
                                 });
@@ -1498,6 +1515,9 @@
             const widget = document.getElementById('drawerStreakWidget');
             // Use on-the-fly calculation for BOTH ring and dots — single source of truth
             const result = history ? calcStreakFromSnapshots(history) : { current: 0, best: 0, dailyResults: [] };
+            // Durable best_streak: use higher of computed vs stored DB value
+            const storedBest = (streakData[agentId] && streakData[agentId].best) || 0;
+            const durableBest = Math.max(result.best, storedBest);
             const tier = getStreakTier(result.current);
 
             const last7 = result.dailyResults.slice(-7);
@@ -1506,13 +1526,13 @@
             widget.style.display = 'flex';
             widget.innerHTML = `
                 <div class="drawer-ring-wrap">
-                    ${streakRingSVG(result.current, Math.max(result.best, 1), 120, 8)}
+                    ${streakRingSVG(result.current, Math.max(durableBest, 1), 120, 8)}
                     <div class="drawer-ring-label">day streak</div>
                 </div>
                 ${tier.label ? `<div class="streak-tier-label" style="color:${tier.color}">${tier.label}</div>` : ''}
                 <div class="dot-trail">${dotTrailHTML(result.dailyResults)}</div>
                 <div class="streak-7day-summary">Last 7 days: ${goodCount}/7 good</div>
-                ${result.best > 0 ? `<div class="streak-best">Best: ${result.best} days</div>` : ''}
+                ${durableBest > 0 ? `<div class="streak-best">Best: ${durableBest} days</div>` : ''}
             `;
         }
 
