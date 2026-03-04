@@ -5,25 +5,34 @@
 # single source of truth for scheduling. Do NOT use pg_cron or
 # other schedulers — see ARCHITECTURE.md for rationale.
 #
-# Schedule (all times PST, UTC offsets shown):
-#   3am PST  (11:00 UTC) — Agent sync + Call data
-#   7am PST  (15:00 UTC) — SmartList snapshot (morning)
-#   4pm PST  (00:00 UTC) — Call data + SmartList snapshot (afternoon)
+# Schedule overview (PST / UTC):
+#   3am PST  (11:00 UTC) — Agent sync + Calls (overnight lock-in)
+#   7am PST  (15:00 UTC) — Calls + SmartLists (morning open)
+#   9am PST  (17:00 UTC) — Calls + SmartLists
+#  11am PST  (19:00 UTC) — Calls + SmartLists
+#   1pm PST  (21:00 UTC) — Calls + SmartLists
+#   3pm PST  (23:00 UTC) — Calls + SmartLists
+#   5pm PST  (01:00 UTC) — Calls + SmartLists (end of day)
 #
-# NOTE: During PDT (Mar–Nov), times shift 1 hour later in local
-# time (e.g., 3am PST fires at 4am PDT). The UTC crons stay fixed.
+# NOTE: During PDT (Mar–Nov), local times shift 1hr later
+# (e.g., the 15:00 UTC run fires at 8am PDT instead of 7am PST).
+# UTC crons stay fixed. This is acceptable — coverage still
+# spans the business day.
 # =============================================================
 
 name: FUB Data Sync
 
 on:
   schedule:
-    # 3am PST = 11:00 UTC — agents + calls (previous-day lock-in)
+    # 3am PST = 11:00 UTC — agent sync + overnight call lock-in
     - cron: '0 11 * * *'
-    # 7am PST = 15:00 UTC — morning smart list snapshot
-    - cron: '0 15 * * *'
-    # 4pm PST = 00:00 UTC — afternoon calls + smart lists
-    - cron: '0 0 * * *'
+    # Business-day refreshes: every 2hrs from 7am–5pm PST
+    - cron: '0 15 * * *'   # 7am PST
+    - cron: '0 17 * * *'   # 9am PST
+    - cron: '0 19 * * *'   # 11am PST
+    - cron: '0 21 * * *'   # 1pm PST
+    - cron: '0 23 * * *'   # 3pm PST
+    - cron: '0 1 * * *'    # 5pm PST
   workflow_dispatch:
     # Manual trigger runs ALL steps
 
@@ -49,17 +58,16 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # ── Agents: 3am PST daily ──────────────────────────────
+      # ── Agents: 3am PST daily only ──────────────────────────
       - name: Sync agents
         if: github.event.schedule == '0 11 * * *' || github.event_name == 'workflow_dispatch'
         run: node scripts/sync-agents.js
 
-      # ── Calls: 3am PST + 4pm PST ──────────────────────────
+      # ── Calls: every run (incremental, lightweight) ──────────
       - name: Pull call data
-        if: github.event.schedule == '0 11 * * *' || github.event.schedule == '0 0 * * *' || github.event_name == 'workflow_dispatch'
         run: node scripts/pull-fub-calls.js
 
-      # ── Smart Lists: 7am PST + 4pm PST ────────────────────
+      # ── Smart Lists: every business-day run (skip 3am) ───────
       - name: Pull smart list data
-        if: github.event.schedule == '0 15 * * *' || github.event.schedule == '0 0 * * *' || github.event_name == 'workflow_dispatch'
+        if: github.event.schedule != '0 11 * * *' || github.event_name == 'workflow_dispatch'
         run: node scripts/pull-fub-data.js

@@ -40,9 +40,20 @@ function fubHeaders() {
   };
 }
 
-/** Extract date portion (YYYY-MM-DD) from ISO timestamp */
-function dateOnly(isoString) {
-  return isoString.substring(0, 10);
+/**
+ * Convert an ISO timestamp to a YYYY-MM-DD date in Pacific time.
+ *
+ * FUB returns UTC timestamps. A call at 5pm Pacific on 3/3 is
+ * "2026-03-04T01:00:00Z" in UTC — naive substring would bucket
+ * it as 3/4 instead of 3/3. We convert to America/Los_Angeles
+ * so daily aggregation matches the San Diego business day.
+ *
+ * IMPORTANT: Must stay in sync with the edge function mirror.
+ */
+function datePacific(isoString) {
+  const d = new Date(isoString);
+  // toLocaleDateString('en-CA') returns YYYY-MM-DD format
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 }
 
 /**
@@ -87,7 +98,7 @@ function aggregateCalls(calls) {
   for (const call of calls) {
     if (!call.userId || !call.created) continue;
 
-    const date = dateOnly(call.created);
+    const date = datePacific(call.created);
     const key = `${call.userId}:${date}`;
 
     if (!map.has(key)) {

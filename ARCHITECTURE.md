@@ -1,6 +1,6 @@
 # FUB Expectations Tracker — Architecture Guide
 
-> **Last updated:** 2026-03-03
+> **Last updated:** 2026-03-04
 >
 > This document is the single source of truth for how the system is built,
 > how data flows, what runs where, and why. Read this before making changes.
@@ -37,7 +37,7 @@ agent performance across SmartLists and call activity.
 ┌──────────────┐     ┌─────────────────────┐     ┌──────────────┐
 │  FUB API     │────▶│  GitHub Actions      │────▶│  Supabase    │
 │  /v1/people  │     │  (Node.js scripts)   │     │  (Postgres)  │
-│  /v1/calls   │     │  Scheduled 3x daily  │     │              │
+│  /v1/calls   │     │  Scheduled 7x daily  │     │              │
 │  /v1/users   │     └─────────────────────┘     │              │
 └──────────────┘                                  │              │
                      ┌─────────────────────┐     │              │
@@ -65,17 +65,30 @@ only (dashboard buttons, future webhooks). See [Lessons Learned](#lessons-learne
 
 **File:** `.github/workflows/pull-fub-data.yml`
 
-Three cron triggers, all in UTC (PST offsets shown):
+Seven cron triggers provide near-real-time data throughout the business day.
+All times in UTC (PST/PDT offsets shown):
 
-| UTC Cron      | PST Time | PDT Time | What Runs                        |
-|---------------|----------|----------|----------------------------------|
-| `0 11 * * *`  | 3:00 AM  | 4:00 AM  | Agent sync + Call data pull      |
-| `0 15 * * *`  | 7:00 AM  | 8:00 AM  | SmartList snapshot (morning)     |
-| `0 0 * * *`   | 4:00 PM  | 5:00 PM  | Call data pull + SmartList snapshot (afternoon) |
+| UTC Cron      | PST Time | PDT Time | What Runs                              |
+|---------------|----------|----------|----------------------------------------|
+| `0 11 * * *`  | 3:00 AM  | 4:00 AM  | Agent sync + Call data (overnight)     |
+| `0 15 * * *`  | 7:00 AM  | 8:00 AM  | Calls + SmartLists (morning open)      |
+| `0 17 * * *`  | 9:00 AM  | 10:00 AM | Calls + SmartLists                     |
+| `0 19 * * *`  | 11:00 AM | 12:00 PM | Calls + SmartLists                     |
+| `0 21 * * *`  | 1:00 PM  | 2:00 PM  | Calls + SmartLists                     |
+| `0 23 * * *`  | 3:00 PM  | 4:00 PM  | Calls + SmartLists                     |
+| `0 1 * * *`   | 5:00 PM  | 6:00 PM  | Calls + SmartLists (end of day)        |
+
+**Why 2-hour intervals?** Team leads monitor the dashboard live throughout
+the day. Call data and SmartList totals need to reflect near-current state.
+The incremental cursor-based sync makes each run lightweight (~seconds for
+a few dozen new calls).
 
 **Manual trigger** (`workflow_dispatch`) runs ALL steps.
 
-Steps use `github.event.schedule` to conditionally execute:
+**Conditional execution:**
+- **Agent sync** runs only at 3am (roles don't change intraday)
+- **Call data** runs on every trigger (incremental, fast)
+- **SmartList snapshots** run on every business-day trigger (skip 3am overnight run)
 
 ```yaml
 - name: Sync agents
@@ -110,7 +123,7 @@ FUB /v1/users → scripts/sync-agents.js → agents table
 2. Apply `deriveRole()` to map API roles to display roles
 3. Upsert into `agents` table on conflict `id`
 
-### Call Data Pull (3am PST + 4pm PST)
+### Call Data Pull (every 2hrs, 3am–5pm PST)
 
 ```
 FUB /v1/calls → scripts/pull-fub-calls.js → call_daily_stats table
@@ -118,10 +131,16 @@ FUB /v1/calls → scripts/pull-fub-calls.js → call_daily_stats table
 
 1. Read `call_sync_cursor` for last sync timestamp
 2. Fetch all calls created after that timestamp (paginated)
-3. Aggregate into daily buckets per agent (outbound/inbound counts,
+3. Convert call timestamps to **Pacific time** before date bucketing
+4. Aggregate into daily buckets per agent (outbound/inbound counts,
    durations, conversations)
-4. Upsert into `call_daily_stats` on conflict `(agent_id, call_date)`
-5. Advance cursor to latest call's `created` timestamp
+5. Upsert into `call_daily_stats` on conflict `(agent_id, call_date)`
+6. Advance cursor to latest call's `created` timestamp
+
+**Timezone handling:** FUB returns UTC timestamps. The `datePacific()`
+function converts to `America/Los_Angeles` before extracting the date,
+so a call at 5pm Pacific on 3/3 (which is `2026-03-04T01:00:00Z` in UTC)
+correctly buckets as 2026-03-03, not 2026-03-04.
 
 **Conversation threshold:** 120 seconds. Any call >= 2 minutes counts as
 a "conversation" in outbound_conversations / inbound_conversations.
