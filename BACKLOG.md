@@ -42,6 +42,7 @@ _Completed items moved here with ship date for reference._
 | 2026-03-04 | Durable best_streak — `Math.max(computed, stored)` ensures best streak is never lowered even if raw data is pruned |
 | 2026-03-04 | Fix streak calc: treat missing SmartList data as implicitly green — agents with 0 leads (no `agent_list_counts` row) now count as green via `dayPresence` tracking |
 | 2026-03-04 | Drawer panel design overhaul — 3-zone header (name / compact streak / range toggle + controls), move subtitle under Lead Count Trend, visual divider between Call Activity and Lead Count, Call Activity title matched to section style (17px Playfair bold), compact 40px streak ring with dot trail in header |
+| 2026-03-04 | Streak widget visual enhancement — tier-colored pill container (background + border tint), 48px ring with 4px stroke, 8px dots, tier label ("Building"/"Consistent"/"Strong"/"Elite"), progressive visual impact by tier |
 
 ---
 

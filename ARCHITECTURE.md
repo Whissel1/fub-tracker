@@ -391,7 +391,7 @@ Contains all UI logic, Supabase queries, and rendering.
 - **Matrix table:** Agents × SmartLists heatmap with color coding
 - **Drawer:** Slide-out panel (780px) with 3-zone header: agent name (left), compact streak ring + dot trail (center), 7d/14d/30d range toggle + refresh/close (right)
 - **Call Activity section:** Outbound/inbound/conversations cards, avg talk time, total minutes, stacked bar chart
-- **Streak widget:** Compact 40px SVG ring + 7-day dot trail inline in drawer header
+- **Streak widget:** Tier-colored pill in drawer header — 48px SVG ring (stroke scales to tier color), 7-day dot trail, tier label ("Building" / "Consistent" / "Strong" / "Elite"); pill background and border tint based on streak tier
 - **Lead Count Trend:** Line chart with subtitle "Daily progress across smart lists"; 7d/14d/30d toggle in header controls both chart and call stats
 - **Manage Agents modal:** Toggle agent visibility on dashboard
 - **Threshold editor:** Inline editing of green/yellow/red thresholds
@@ -567,12 +567,13 @@ the dot trail.
 
 ### Streak Tiers
 
-| Range   | Label      | Color   |
-|---------|------------|---------|
-| 1–6     | Building   | #f4a261 |
-| 7–13    | Consistent | #2a9d8f |
-| 14–29   | Strong     | #264653 |
-| 30+     | Elite      | #e63946 |
+| Range   | Label      | Color (var)       | Pill Background              | Pill Border                  |
+|---------|------------|-------------------|------------------------------|------------------------------|
+| 0       | _(none)_   | —                 | transparent                  | default (light-cream)        |
+| 1–6     | Building   | `--medium-warm`   | `rgba(206,184,161, 0.12)`    | `rgba(206,184,161, 0.2)`     |
+| 7–13    | Consistent | `--orange-light`  | `rgba(205,118,61, 0.07)`     | `rgba(205,118,61, 0.15)`     |
+| 14–29   | Strong     | `--blaze-orange`  | `rgba(199,89,18, 0.08)`      | `rgba(199,89,18, 0.18)`      |
+| 30+     | Elite      | `--orange-deep`   | `rgba(163,80,27, 0.08)`      | `rgba(163,80,27, 0.2)`       |
 
 ### Data Flow
 
