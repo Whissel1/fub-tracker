@@ -415,6 +415,14 @@ GitHub Actions using the **service role key**, which bypasses RLS.
 RLS-denied operation is attempted. This makes debugging RLS issues
 non-obvious — the operation appears to succeed but nothing is persisted.
 
+**Important:** Supabase JS client defaults to returning **1000 rows max**
+per query (PostgREST default). Any query that may exceed this must include
+an explicit `.limit(N)`. The `loadAllStreaks` query fetches `agent_list_counts`
+for all ~150 agents across all snapshots (~18,900+ rows) and requires
+`.limit(50000)`. Queries scoped to a single agent (like `loadDrawerHistory`)
+stay well under 1000 and don't need an override. When adding new bulk queries,
+always estimate the row count and add `.limit()` if it could exceed 1000.
+
 ### `docs/index.html`
 
 Landing page / entry point. Redirects or links to `progress.html`.

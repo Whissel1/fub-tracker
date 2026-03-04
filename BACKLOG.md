@@ -35,6 +35,7 @@ _Completed items moved here with ship date for reference._
 | 2026-03-04 | Latest pull timestamp display (Pacific time, full datetime) |
 | 2026-03-04 | Fix Manage Agents toggle persistence (RLS policy for anon UPDATE) |
 | 2026-03-04 | Fix streak ring/dots mismatch (Set-based dedup, unified data source, remove staleness cache) |
+| 2026-03-04 | Fix matrix vs drawer streak divergence (Supabase row limit + pull_date filter consistency) |
 
 ---
 
