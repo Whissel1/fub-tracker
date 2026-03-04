@@ -1428,7 +1428,8 @@
                             .from('agent_list_counts')
                             .select('agent_id, smart_list_id, lead_count, snapshot_id')
                             .in('agent_id', staleIds)
-                            .in('snapshot_id', snapIds);
+                            .in('snapshot_id', snapIds)
+                            .limit(50000);
 
                         if (counts) {
                             // Build history array per agent
@@ -2030,14 +2031,14 @@
                 // Fetch snapshots from last 35 days
                 const since = new Date();
                 since.setDate(since.getDate() - 35);
-                const sinceStr = since.toISOString();
+                const sinceDate = since.toISOString().slice(0, 10);
 
                 const { data: snaps, error: snapErr } = await sb
                     .from('snapshots')
                     .select('id, smart_list_id, pull_date')
                     .eq('status', 'complete')
-                    .gte('pulled_at', sinceStr)
-                    .order('pulled_at', { ascending: true });
+                    .gte('pull_date', sinceDate)
+                    .order('pull_date', { ascending: true });
                 if (snapErr) throw snapErr;
 
                 if (!snaps || snaps.length === 0) {
