@@ -665,6 +665,29 @@
             font-size: 14px;
         }
 
+        /* ── Streak Ring ── */
+        .streak-cell { text-align: center; padding: 4px 6px !important; vertical-align: middle; }
+        .mini-ring-wrap { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; position: relative; }
+        .mini-ring-wrap svg { display: block; }
+        .mini-ring-num { position: absolute; font-size: 11px; font-weight: 700; fill: var(--dune); }
+        .ring-bg { fill: none; stroke: var(--warm-white); }
+        .ring-fg { fill: none; stroke-linecap: round; transition: stroke-dashoffset 0.8s ease; }
+
+        .drawer-streak-section {
+            display: flex; flex-direction: column; align-items: center;
+            padding: 20px 16px 16px; border-bottom: 1px solid var(--light-cream);
+        }
+        .drawer-ring-wrap { position: relative; width: 120px; height: 120px; margin-bottom: 10px; }
+        .drawer-ring-wrap svg { display: block; }
+        .drawer-ring-num { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); font-size: 28px; font-weight: 700; color: var(--dune); line-height: 1; }
+        .drawer-ring-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%, 40%); font-size: 10px; color: var(--gray-light); text-transform: uppercase; letter-spacing: 0.5px; }
+        .dot-trail { display: flex; gap: 6px; margin: 8px 0 6px; }
+        .dot-trail span { width: 10px; height: 10px; border-radius: 50%; }
+        .dot-good { background: var(--green); }
+        .dot-miss { background: var(--light-cream); }
+        .streak-tier-label { font-family: 'Playfair Display', serif; font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+        .streak-best { font-size: 12px; color: var(--gray-light); }
+
         /* Responsive */
         @media (max-width: 768px) {
             .dashboard { padding: 16px; }
@@ -788,6 +811,7 @@
             </div>
             <div class="drawer-content" id="drawerContent">
                 <div class="drawer-status-bar" id="drawerStatusBar"></div>
+                <div class="drawer-streak-section" id="drawerStreakWidget" style="display:none;"></div>
                 <div class="drawer-section">
                     <div class="drawer-section-title">Lead Count Trend</div>
                     <div class="drawer-range-toggle" id="drawerRangeToggle">
@@ -846,6 +870,7 @@
         let drawerAgentId = null;
         let drawerRange = 7;
         let drawerHistoryCache = {};
+        let streakData = {};
 
         // ── Data Loading ──
         async function loadDashboard() {
@@ -975,6 +1000,181 @@
             if (info.contains(e.relatedTarget)) return;
             globalTip.style.display = 'none';
         });
+
+        // ── Streak System ──
+        const STREAK_START = '2026-02-26';
+        const STREAK_GOOD_THRESHOLD = 7; // out of 9 lists
+
+        function getStreakTier(days) {
+            if (days >= 30) return { color: 'var(--orange-deep)', label: 'Elite' };
+            if (days >= 14) return { color: 'var(--blaze-orange)', label: 'Strong' };
+            if (days >= 7)  return { color: 'var(--orange-light)', label: 'Consistent' };
+            if (days >= 1)  return { color: 'var(--medium-warm)', label: 'Building' };
+            return { color: 'var(--light-cream)', label: '' };
+        }
+
+        function streakRingSVG(days, best, size, strokeW) {
+            const r = (size - strokeW) / 2;
+            const circ = 2 * Math.PI * r;
+            const pct = best > 0 ? Math.min(days / best, 1) : 0;
+            const offset = circ * (1 - pct);
+            const tier = getStreakTier(days);
+            const half = size / 2;
+            const fontSize = size <= 40 ? 11 : 28;
+            return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+                <circle class="ring-bg" cx="${half}" cy="${half}" r="${r}" stroke-width="${strokeW}"/>
+                <circle class="ring-fg" cx="${half}" cy="${half}" r="${r}" stroke-width="${strokeW}"
+                    stroke="${tier.color}" stroke-dasharray="${circ}" stroke-dashoffset="${offset}"
+                    transform="rotate(-90 ${half} ${half})"/>
+                <text x="${half}" y="${half}" text-anchor="middle" dominant-baseline="central"
+                    font-size="${fontSize}" font-weight="700" fill="var(--dune)">${days}</text>
+            </svg>`;
+        }
+
+        function dotTrailHTML(dailyResults) {
+            return dailyResults.slice(-7).map(d =>
+                `<span class="${d.good ? 'dot-good' : 'dot-miss'}" title="${d.date}: ${d.good ? 'Good' : 'Miss'}"></span>`
+            ).join('');
+        }
+
+        function calcStreakFromSnapshots(history) {
+            // history = [{ date, list_id, lead_count }]
+            // Group by date, count green lists per day
+            const dayMap = {};
+            for (const h of history) {
+                if (h.date < STREAK_START) continue;
+                if (!dayMap[h.date]) dayMap[h.date] = 0;
+                const status = getStatus(h.lead_count, h.list_id);
+                if (status === 'green') dayMap[h.date]++;
+            }
+            const sortedDates = Object.keys(dayMap).sort();
+            const dailyResults = sortedDates.map(d => ({ date: d, good: dayMap[d] >= STREAK_GOOD_THRESHOLD }));
+
+            // Current streak: consecutive good days backward from end
+            let current = 0;
+            for (let i = dailyResults.length - 1; i >= 0; i--) {
+                if (dailyResults[i].good) current++;
+                else break;
+            }
+            // Best streak: longest consecutive run
+            let best = 0, run = 0;
+            for (const d of dailyResults) {
+                if (d.good) { run++; if (run > best) best = run; }
+                else run = 0;
+            }
+            return { current, best, dailyResults };
+        }
+
+        async function loadAllStreaks() {
+            try {
+                // 1. Fetch existing streak records
+                const { data: existing } = await sb.from('agent_streaks').select('*');
+                const streakMap = {};
+                if (existing) existing.forEach(r => { streakMap[r.agent_id] = r; });
+
+                // 2. Determine which agents need recalculation (stale = updated before today)
+                const today = new Date().toISOString().slice(0, 10);
+                const agentIds = allAgentRows.map(r => r.agent_id).filter((v, i, a) => a.indexOf(v) === i);
+                const staleIds = agentIds.filter(id => {
+                    const rec = streakMap[id];
+                    return !rec || (rec.updated_at && rec.updated_at.slice(0, 10) < today);
+                });
+
+                // 3. For stale agents, fetch snapshot history via snapshots + agent_list_counts
+                if (staleIds.length > 0) {
+                    // Get all complete snapshots since STREAK_START
+                    const { data: snaps } = await sb
+                        .from('snapshots')
+                        .select('id, smart_list_id, pull_date')
+                        .eq('status', 'complete')
+                        .gte('pull_date', STREAK_START)
+                        .order('pull_date', { ascending: true });
+
+                    if (snaps && snaps.length > 0) {
+                        const snapIds = snaps.map(s => s.id);
+                        const snapDateMap = {};
+                        for (const s of snaps) snapDateMap[s.id] = s.pull_date;
+
+                        // Fetch counts for stale agents across all those snapshots
+                        const { data: counts } = await sb
+                            .from('agent_list_counts')
+                            .select('agent_id, smart_list_id, lead_count, snapshot_id')
+                            .in('agent_id', staleIds)
+                            .in('snapshot_id', snapIds);
+
+                        if (counts) {
+                            // Build history array per agent
+                            const byAgent = {};
+                            for (const c of counts) {
+                                if (!byAgent[c.agent_id]) byAgent[c.agent_id] = [];
+                                byAgent[c.agent_id].push({
+                                    date: snapDateMap[c.snapshot_id],
+                                    list_id: c.smart_list_id,
+                                    lead_count: c.lead_count
+                                });
+                            }
+
+                            // Calculate and upsert
+                            const upserts = [];
+                            for (const id of staleIds) {
+                                const hist = byAgent[id] || [];
+                                const result = calcStreakFromSnapshots(hist);
+                                const lastGood = result.dailyResults.filter(d => d.good).pop();
+                                upserts.push({
+                                    agent_id: id,
+                                    current_streak: result.current,
+                                    best_streak: result.best,
+                                    last_good_date: lastGood ? lastGood.date : null,
+                                    updated_at: new Date().toISOString()
+                                });
+                                streakMap[id] = upserts[upserts.length - 1];
+                            }
+                            if (upserts.length > 0) {
+                                await sb.from('agent_streaks').upsert(upserts, { onConflict: 'agent_id' });
+                            }
+                        }
+                    }
+                }
+
+                // 4. Populate global streakData and update table cells
+                streakData = {};
+                for (const id of agentIds) {
+                    const rec = streakMap[id];
+                    streakData[id] = rec ? { current: rec.current_streak, best: rec.best_streak } : { current: 0, best: 0 };
+                }
+                updateStreakCells();
+            } catch (err) {
+                console.error('Streak load error:', err);
+            }
+        }
+
+        function updateStreakCells() {
+            document.querySelectorAll('.streak-cell[data-agent-id]').forEach(cell => {
+                const id = parseInt(cell.dataset.agentId);
+                const sd = streakData[id] || { current: 0, best: 0 };
+                cell.innerHTML = `<div class="mini-ring-wrap">${streakRingSVG(sd.current, Math.max(sd.best, 1), 36, 3.5)}</div>`;
+            });
+        }
+
+        function renderDrawerStreak(agentId, history) {
+            const widget = document.getElementById('drawerStreakWidget');
+            const sd = streakData[agentId] || { current: 0, best: 0 };
+            const tier = getStreakTier(sd.current);
+
+            // Calc dot trail from drawer history
+            const result = history ? calcStreakFromSnapshots(history) : { dailyResults: [] };
+
+            widget.style.display = 'flex';
+            widget.innerHTML = `
+                <div class="drawer-ring-wrap">
+                    ${streakRingSVG(sd.current, Math.max(sd.best, 1), 120, 8)}
+                    <div class="drawer-ring-label">day streak</div>
+                </div>
+                ${tier.label ? `<div class="streak-tier-label" style="color:${tier.color}">${tier.label}</div>` : ''}
+                <div class="dot-trail">${dotTrailHTML(result.dailyResults)}</div>
+                ${sd.best > 0 ? `<div class="streak-best">Best: ${sd.best} days</div>` : ''}
+            `;
+        }
 
         // ── Build Agent Matrix ──
         function buildMatrix(rows) {
@@ -1179,6 +1379,9 @@
                     return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
                 } else if (sortCol === 'total') {
                     aVal = a.total; bVal = b.total;
+                } else if (sortCol === 'streak') {
+                    aVal = streakData[a.id]?.current || 0;
+                    bVal = streakData[b.id]?.current || 0;
                 } else {
                     aVal = a.lists[sortCol]?.lead_count || 0;
                     bVal = b.lists[sortCol]?.lead_count || 0;
@@ -1188,6 +1391,7 @@
 
             let headerHTML = '<tr>';
             headerHTML += `<th data-col="name" class="${sortCol === 'name' ? 'sorted' : ''}" onclick="setSort('name')">Agent <span class="sort-arrow">${sortCol === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
+            headerHTML += `<th class="streak-cell ${sortCol === 'streak' ? 'sorted' : ''}" onclick="setSort('streak')">Streak <span class="sort-arrow">${sortCol === 'streak' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             for (const sl of smartLists) {
                 const abbr = sl.name.length > 14 ? sl.name.slice(0, 12) + '…' : sl.name;
                 const cls = sortCol === sl.id ? 'sorted' : '';
@@ -1203,6 +1407,7 @@
                 bodyHTML += '<tr>';
                 const safeName = escHTML(agent.name).replace(/'/g, "\\'");
                 bodyHTML += `<td><a class="agent-name-link" onclick="openDrawer(${agent.id}, '${safeName}')">${escHTML(agent.name)}</a></td>`;
+                bodyHTML += `<td class="streak-cell" data-agent-id="${agent.id}"></td>`;
                 for (const sl of smartLists) {
                     const entry = agent.lists[sl.id];
                     if (entry) {
@@ -1378,6 +1583,7 @@
 
             renderDrawerChart(data, dates);
             renderDrawerTable(data, dates);
+            renderDrawerStreak(drawerAgentId, history);
         }
 
         function renderDrawerChart(data, dates) {
@@ -1511,7 +1717,7 @@
         }
 
         // ── Init ──
-        loadDashboard();
+        loadDashboard().then(() => loadAllStreaks());
     </script>
 </body>
 </html>
