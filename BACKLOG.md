@@ -43,6 +43,7 @@ _Completed items moved here with ship date for reference._
 | 2026-03-04 | Fix streak calc: treat missing SmartList data as implicitly green — agents with 0 leads (no `agent_list_counts` row) now count as green via `dayPresence` tracking |
 | 2026-03-04 | Drawer panel design overhaul — 3-zone header (name / compact streak / range toggle + controls), move subtitle under Lead Count Trend, visual divider between Call Activity and Lead Count, Call Activity title matched to section style (17px Playfair bold), compact 40px streak ring with dot trail in header |
 | 2026-03-04 | Streak widget visual enhancement — tier-colored pill container (background + border tint), 48px ring with 4px stroke, 8px dots, tier label ("Building"/"Consistent"/"Strong"/"Elite"), progressive visual impact by tier |
+| 2026-03-04 | Streak column help tooltip — ⓘ icon with explanation: "Consecutive days with 7+ of 9 Smart Lists green. Resets on any day below that." |
 
 ---
 
@@ -84,6 +85,20 @@ What combination of metrics creates a fair and motivating ranking? Tied to the l
 **Depends on:** FUB data quality (tags/custom fields for lead source)
 
 Filter smart list data by lead source (company-provided vs. agent-generated). Depends on whether FUB tags or custom fields reliably distinguish lead source, and whether existing smart lists already segment this way.
+
+#### Lead Generation / Assignment Tracking
+**Priority:** TBD
+**Status:** Idea — needs data source investigation
+**Depends on:** FUB API (new leads assigned or created per agent per day)
+
+An agent can be green across all smart lists simply because they have no pipeline — zero leads means zero over-threshold counts. That looks great on the matrix but masks a real problem: no business. Need a metric that surfaces lead volume per agent (assigned + self-generated) so managers can distinguish "healthy and organized" from "empty pipeline." Open questions: does FUB expose lead assignment/creation events at the agent level with enough granularity? Could be a new column in the matrix, a card in the drawer, or a separate view entirely.
+
+#### Calls/Day Threshold Color Coding
+**Priority:** TBD
+**Status:** Idea — needs threshold design
+**Depends on:** Product decision on what "acceptable" call volume looks like
+
+Calls/Day is currently a raw number with no judgment — it doesn't tell a manager whether an agent's effort level is acceptable. Adding green/yellow/red color coding (like the smart list columns) would make low-effort agents immediately visible. Needs a decision on thresholds: what's the minimum acceptable calls/day? Should it vary by role? Could reuse the existing threshold infrastructure (editable per-column targets) or be a simpler global setting.
 
 ---
 
