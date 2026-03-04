@@ -37,6 +37,9 @@ _Completed items moved here with ship date for reference._
 | 2026-03-04 | Fix streak ring/dots mismatch (Set-based dedup, unified data source, remove staleness cache) |
 | 2026-03-04 | Fix matrix vs drawer streak divergence (Supabase row limit + pull_date filter consistency) |
 | 2026-03-04 | Purge stale agent_streaks cache, add error checking to loadAllStreaks, add no-cache meta tags |
+| 2026-03-04 | Fix Supabase 1000-row server cap — paginated `loadAllStreaks` fetches all ~11K rows across multiple `.range()` requests |
+| 2026-03-04 | Exclude current day (Pacific time) from streak calculation — incomplete days don't count for or against |
+| 2026-03-04 | Durable best_streak — `Math.max(computed, stored)` ensures best streak is never lowered even if raw data is pruned |
 
 ---
 
@@ -95,6 +98,13 @@ Define and implement cleanup for old snapshots (e.g., older than 6 months). Need
 **Depends on:** Settings Page / auth system
 
 The `agents` table currently has a broad `"Allow anon update visible"` RLS policy that permits the anon key to UPDATE any column. This was added to fix the Manage Agents toggle persistence bug (the frontend writes `visible` directly via the Supabase JS client). When auth is implemented, this should be scoped to only allow updating the `visible` column, and ideally require an authenticated admin role rather than anon.
+
+#### Pre-Aggregated Daily Agent Status Table
+**Priority:** Medium
+**Status:** Not started — architectural change
+**Depends on:** Nothing — can be built incrementally alongside current system
+
+Move streak computation server-side by creating a `daily_agent_status` table that stores one row per agent per day with the count of green SmartLists. This pre-aggregated data would feed both the matrix table and the drawer, eliminating the need for the client to paginate through ~11K raw `agent_list_counts` rows and compute streaks in the browser. The current client-side pagination works but is a tactical fix — this is the architectural solution. The table would be populated by a nightly GitHub Action or as part of each SmartList pull.
 
 #### Beginning-of-Day Smart List Snapshot
 **Priority:** TBD

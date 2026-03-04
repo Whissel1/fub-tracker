@@ -415,13 +415,33 @@ GitHub Actions using the **service role key**, which bypasses RLS.
 RLS-denied operation is attempted. This makes debugging RLS issues
 non-obvious — the operation appears to succeed but nothing is persisted.
 
-**Important:** Supabase JS client defaults to returning **1000 rows max**
-per query (PostgREST default). Any query that may exceed this must include
-an explicit `.limit(N)`. The `loadAllStreaks` query fetches `agent_list_counts`
-for all ~150 agents across all snapshots (~18,900+ rows) and requires
-`.limit(50000)`. Queries scoped to a single agent (like `loadDrawerHistory`)
-stay well under 1000 and don't need an override. When adding new bulk queries,
-always estimate the row count and add `.limit()` if it could exceed 1000.
+**Important — Supabase 1000-Row Server Cap:** This project's Supabase
+PostgREST configuration enforces a **server-side `max-rows` limit of 1000**.
+This is NOT merely a client default — `.limit(50000)` will NOT override it.
+The server silently truncates results to 1000 rows with no error. The only
+way to fetch more than 1000 rows is **pagination via `.range()`**. The
+`loadAllStreaks` function fetches `agent_list_counts` for all ~140 agents
+across all snapshots (~11K rows) using a paginated loop:
+
+```js
+let counts = [];
+let offset = 0;
+const PAGE_SIZE = 1000;
+while (true) {
+    const { data: page } = await sb
+        .from('agent_list_counts')
+        .select(...)
+        .range(offset, offset + PAGE_SIZE - 1);
+    if (!page || page.length === 0) break;
+    counts = counts.concat(page);
+    if (page.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+}
+```
+
+Queries scoped to a single agent (like `loadDrawerHistory`) stay well under
+1000 and don't need pagination. When adding new bulk queries, always estimate
+the row count and paginate with `.range()` if it could exceed 1000.
 
 **Error handling:** All Supabase queries in `loadAllStreaks` destructure
 the `error` field and log failures via `console.error`. A warning is
@@ -520,16 +540,30 @@ good days ending at the most recent date. Data starts from
 ### Calculation: `calcStreakFromSnapshots(history)`
 
 Takes an array of `agent_list_counts` rows and returns `{ current, best,
-dailyResults }`. The function deduplicates by list_id per day using a
-`Set` — if a list appears green in ANY snapshot on a given day, the agent
-gets credit for that list once. This prevents double-counting when
-multiple snapshots exist per day (the system pulls ~2 snapshots/day per
-SmartList, so without dedup an agent with 4 green lists would register
-as 8).
+dailyResults }`. Key behaviors:
+
+1. **Set-based deduplication:** Uses a `Set` of green list_ids per day.
+   If a list appears green in ANY snapshot on a given day, the agent gets
+   credit for that list once. This prevents double-counting when multiple
+   snapshots exist per day (the system pulls ~2 snapshots/day per SmartList,
+   so without dedup an agent with 4 green lists would register as 8).
+
+2. **Current-day exclusion (Pacific time):** The function calculates
+   today's date in `America/Los_Angeles` timezone and skips any rows
+   matching that date. Incomplete days don't count for or against a streak —
+   streaks are measured through the previous completed day only.
+
+3. **Durable best_streak:** Both `loadAllStreaks` and `renderDrawerStreak`
+   use `Math.max(computed_best, stored_best)` when writing or displaying
+   the best streak. This means a best streak is NEVER lowered, even if the
+   raw snapshot data that produced it is later pruned. This is critical for
+   celebrating long streaks (500+ days) that outlive the data retention
+   window.
 
 `current` = consecutive good days counting backward from the most recent
-date. `best` = longest consecutive run across all dates. `dailyResults`
-= array of `{ date, good }` objects for the dot trail.
+completed date. `best` = longest consecutive run across all dates (or stored
+DB value if higher). `dailyResults` = array of `{ date, good }` objects for
+the dot trail.
 
 ### Streak Tiers
 
@@ -751,6 +785,40 @@ comments in both files pointing to each other.
 contain a comment pointing to its mirror. Any change to one requires
 changing the other. Consider extracting shared logic into a common
 module if it diverges again.
+
+### The Supabase 1000-Row Silent Truncation (March 2026)
+
+**What happened:** The streak system showed divergent values between the
+matrix table and the agent drawer. The matrix mini-rings relied on
+`loadAllStreaks()` which fetched `agent_list_counts` for all ~140 agents
+in a single bulk query (~11K rows). The drawer fetched history for a
+single agent (~80 rows) and computed streaks on the fly.
+
+Three client-side bugs were found and fixed (Set-based dedup, unified
+data source for ring/dots, removal of staleness cache), but the matrix
+still showed wrong values. The root cause turned out to be a
+**server-side PostgREST `max-rows` configuration** capped at **1000 rows**.
+The bulk query was silently truncated — no error returned, just 1000 rows
+instead of 11K. Since `loadAllStreaks` distributed those 1000 rows across
+140 agents, most agents got incomplete or zero data. The drawer query for
+a single agent (~80 rows) was unaffected.
+
+**Why it was hard to find:** Supabase returns HTTP 200 with a valid JSON
+array of 1000 rows — there is no error, no warning, and no indication
+that rows were dropped. Setting `.limit(50000)` on the client side had
+NO effect because the cap is server-side. The only clue was the
+`content-range` header (`0-999/`) in the network response, which is not
+logged by the Supabase JS client.
+
+**Resolution:** Replaced the single query with a paginated loop using
+`.range(offset, offset + PAGE_SIZE - 1)` that fetches 1000 rows per
+request until all data is retrieved.
+
+**Lesson:** Supabase PostgREST's `max-rows` setting is a hard server-side
+cap that silently truncates results. Client-side `.limit()` cannot override
+it. Any query that might exceed 1000 rows MUST use `.range()` pagination.
+Always check the total row count against expectations when debugging data
+issues — if a query returns exactly 1000 rows, that's a red flag.
 
 ---
 
