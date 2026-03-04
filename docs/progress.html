@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Agent Progress Tracker — Whissel Beer Group</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
@@ -1399,7 +1402,8 @@
         async function loadAllStreaks() {
             try {
                 // 1. Fetch existing streak records
-                const { data: existing } = await sb.from('agent_streaks').select('*');
+                const { data: existing, error: existErr } = await sb.from('agent_streaks').select('*');
+                if (existErr) { console.error('loadAllStreaks agent_streaks query failed:', existErr); }
                 const streakMap = {};
                 if (existing) existing.forEach(r => { streakMap[r.agent_id] = r; });
 
@@ -1411,26 +1415,31 @@
                 // 3. For stale agents, fetch snapshot history via snapshots + agent_list_counts
                 if (staleIds.length > 0) {
                     // Get all complete snapshots since STREAK_START
-                    const { data: snaps } = await sb
+                    const { data: snaps, error: snapErr } = await sb
                         .from('snapshots')
                         .select('id, smart_list_id, pull_date')
                         .eq('status', 'complete')
                         .gte('pull_date', STREAK_START)
                         .order('pull_date', { ascending: true });
 
+                    if (snapErr) { console.error('loadAllStreaks snapshot query failed:', snapErr); }
                     if (snaps && snaps.length > 0) {
                         const snapIds = snaps.map(s => s.id);
                         const snapDateMap = {};
                         for (const s of snaps) snapDateMap[s.id] = s.pull_date;
 
                         // Fetch counts for stale agents across all those snapshots
-                        const { data: counts } = await sb
+                        const { data: counts, error: countErr } = await sb
                             .from('agent_list_counts')
                             .select('agent_id, smart_list_id, lead_count, snapshot_id')
                             .in('agent_id', staleIds)
                             .in('snapshot_id', snapIds)
                             .limit(50000);
 
+                        if (countErr) { console.error('loadAllStreaks counts query failed:', countErr); }
+                        if (counts && counts.length >= 49000) {
+                            console.warn(`⚠️ Streak query returned ${counts.length} rows — approaching 50K limit. Pre-aggregation needed soon.`);
+                        }
                         if (counts) {
                             // Build history array per agent
                             const byAgent = {};
