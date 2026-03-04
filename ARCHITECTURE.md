@@ -423,6 +423,18 @@ for all ~150 agents across all snapshots (~18,900+ rows) and requires
 stay well under 1000 and don't need an override. When adding new bulk queries,
 always estimate the row count and add `.limit()` if it could exceed 1000.
 
+**Error handling:** All Supabase queries in `loadAllStreaks` destructure
+the `error` field and log failures via `console.error`. A warning is
+emitted when the `agent_list_counts` query returns ≥49,000 rows
+(approaching the 50K limit). This replaced earlier silent-failure code
+that would fall through to stale DB values without any indication of a
+query problem.
+
+**Caching:** The HTML includes `Cache-Control: no-cache, no-store,
+must-revalidate` meta tags to prevent CDN-cached old JS from writing
+stale streak values into the DB. GitHub Pages still serves from CDN,
+but browsers should revalidate on each load.
+
 ### `docs/index.html`
 
 Landing page / entry point. Redirects or links to `progress.html`.
@@ -542,10 +554,10 @@ date. `best` = longest consecutive run across all dates. `dailyResults`
 3. **Agent drawer** → `renderDrawerStreak()` uses on-the-fly
    `calcStreakFromSnapshots()` for BOTH the ring number AND the dot trail.
    This guarantees the ring and dots always agree (single source of truth).
-   The drawer fetches its own history via `loadDrawerHistory()` which uses
-   `pulled_at` timestamp filters vs the date-based `pull_date` filter in
-   `loadAllStreaks`, but `calcStreakFromSnapshots` deduplicates by list_id
-   regardless of how many rows per day exist.
+   The drawer fetches its own history via `loadDrawerHistory()` which queries
+   by `pull_date` (same date-based filter as `loadAllStreaks`), and
+   `calcStreakFromSnapshots` deduplicates by list_id regardless of how many
+   rows per day exist.
 
 ### Storage: `agent_streaks` Table
 
