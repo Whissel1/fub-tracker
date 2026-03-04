@@ -389,10 +389,10 @@ Contains all UI logic, Supabase queries, and rendering.
 **Key components:**
 
 - **Matrix table:** Agents × SmartLists heatmap with color coding
-- **Drawer:** Slide-out panel with agent detail (calls, streaks, trends)
-- **Call Activity section:** 7-day outbound chart, daily breakdown table
-- **Streak dots:** Last 7 days pass/fail visualization
-- **Lead Count Trend:** Sparkline chart with 7d/14d/30d toggle
+- **Drawer:** Slide-out panel (780px) with 3-zone header: agent name (left), compact streak ring + dot trail (center), 7d/14d/30d range toggle + refresh/close (right)
+- **Call Activity section:** Outbound/inbound/conversations cards, avg talk time, total minutes, stacked bar chart
+- **Streak widget:** Compact 40px SVG ring + 7-day dot trail inline in drawer header
+- **Lead Count Trend:** Line chart with subtitle "Daily progress across smart lists"; 7d/14d/30d toggle in header controls both chart and call stats
 - **Manage Agents modal:** Toggle agent visibility on dashboard
 - **Threshold editor:** Inline editing of green/yellow/red thresholds
 
