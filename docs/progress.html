@@ -689,12 +689,27 @@
         .streak-tier-label { font-family: 'Playfair Display', serif; font-size: 14px; font-weight: 600; margin-bottom: 2px; }
         .streak-best { font-size: 12px; color: var(--gray-light); }
 
+        /* ── Call Activity Styles ── */
+        .calls-cell { text-align: center; padding: 4px 6px !important; vertical-align: middle; min-width: 70px; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--dune); }
+        .call-stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 16px; }
+        .call-stat-grid.two-col { grid-template-columns: repeat(2, 1fr); }
+        .call-stat-card { background: var(--warm-white); border-radius: 8px; padding: 12px 8px; text-align: center; border: 1px solid var(--light-cream); }
+        .call-stat-card.accent { border-color: var(--blaze-orange); }
+        .call-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray-light); margin-bottom: 4px; }
+        .call-stat-value { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 700; color: var(--dune); line-height: 1.2; }
+        .call-stat-rate { font-size: 11px; color: var(--blaze-orange); font-weight: 600; margin-top: 2px; }
+        .drawer-call-section { border-bottom: 1px solid var(--light-cream); }
+        .drawer-call-section h4 { font-family: 'Playfair Display', serif; font-size: 15px; font-weight: 600; color: var(--dune); padding: 16px 16px 0; margin: 0; }
+        .drawer-call-chart-container { height: 180px; padding: 8px 16px 16px; }
+
         /* Responsive */
         @media (max-width: 768px) {
             .dashboard { padding: 16px; }
             .header-left h1 { font-size: 22px; }
             .kpi-value { font-size: 26px; }
             .search-box { width: 100%; }
+            .call-stat-grid { grid-template-columns: repeat(2, 1fr); }
+            .call-stat-value { font-size: 18px; }
         }
 
         /* Print */
@@ -813,6 +828,7 @@
             <div class="drawer-content" id="drawerContent">
                 <div class="drawer-status-bar" id="drawerStatusBar"></div>
                 <div class="drawer-streak-section" id="drawerStreakWidget" style="display:none;"></div>
+                <div id="drawerCallSection" class="drawer-call-section"></div>
                 <div class="drawer-section">
                     <div class="drawer-section-title">Lead Count Trend</div>
                     <div class="drawer-range-toggle" id="drawerRangeToggle">
@@ -872,6 +888,9 @@
         let drawerRange = 7;
         let drawerHistoryCache = {};
         let streakData = {};
+        let callData = {};           // { agentId: { outPerDay } }
+        let callDataCache = {};      // { agentId: [ daily rows ] } for drawer
+        let callDataLoaded = false;
 
         // ── Data Loading ──
         async function loadDashboard() {
@@ -1177,6 +1196,202 @@
             `;
         }
 
+        // ── Call Activity Functions ──
+        async function loadCallData() {
+            try {
+                const cutoff = new Date();
+                cutoff.setDate(cutoff.getDate() - 35);
+                const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+                const { data, error } = await sb
+                    .from('call_daily_stats')
+                    .select('agent_id, call_date, outbound_total, inbound_total, outbound_duration_sec, inbound_duration_sec, outbound_conversations, inbound_conversations')
+                    .gte('call_date', cutoffStr)
+                    .order('call_date', { ascending: true });
+
+                if (error) throw error;
+
+                // Group by agent
+                callDataCache = {};
+                for (const row of (data || [])) {
+                    if (!callDataCache[row.agent_id]) callDataCache[row.agent_id] = [];
+                    callDataCache[row.agent_id].push(row);
+                }
+
+                // Compute 7-day outbound/day average for table
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                const sevenDayStr = sevenDaysAgo.toISOString().slice(0, 10);
+
+                callData = {};
+                for (const [agentId, rows] of Object.entries(callDataCache)) {
+                    const recent = rows.filter(r => r.call_date >= sevenDayStr);
+                    const totalOutbound = recent.reduce((s, r) => s + r.outbound_total, 0);
+                    callData[agentId] = { outPerDay: totalOutbound / 7 };
+                }
+
+                callDataLoaded = true;
+                updateCallCells();
+            } catch (err) {
+                console.error('Call data load error:', err);
+            }
+        }
+
+        function updateCallCells() {
+            document.querySelectorAll('.calls-cell[data-agent-id]').forEach(cell => {
+                const id = cell.dataset.agentId;
+                const cd = callData[id];
+                cell.textContent = cd ? cd.outPerDay.toFixed(1) : '—';
+            });
+        }
+
+        function renderDrawerCallSection(agentId) {
+            const container = document.getElementById('drawerCallSection');
+            if (!container) return;
+
+            const rows = callDataCache[agentId] || [];
+            const cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - drawerRange);
+            const cutoffStr = cutoff.toISOString().slice(0, 10);
+            const filtered = rows.filter(r => r.call_date >= cutoffStr);
+
+            if (filtered.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+            container.style.display = 'block';
+
+            const days = drawerRange;
+            const totOut = filtered.reduce((s, r) => s + r.outbound_total, 0);
+            const totIn = filtered.reduce((s, r) => s + r.inbound_total, 0);
+            const totConvos = filtered.reduce((s, r) => s + r.outbound_conversations + r.inbound_conversations, 0);
+            const totOutSec = filtered.reduce((s, r) => s + r.outbound_duration_sec, 0);
+            const totInSec = filtered.reduce((s, r) => s + r.inbound_duration_sec, 0);
+            const totalSec = totOutSec + totInSec;
+            const totalCalls = totOut + totIn;
+            const avgTalkSec = totalCalls > 0 ? Math.round(totalSec / totalCalls) : 0;
+            const avgMin = Math.floor(avgTalkSec / 60);
+            const avgSecRem = avgTalkSec % 60;
+            const totalMin = Math.round(totalSec / 60);
+
+            container.innerHTML = `
+                <h4>Call Activity</h4>
+                <div class="call-stat-grid">
+                    <div class="call-stat-card">
+                        <div class="call-stat-label">Outbound</div>
+                        <div class="call-stat-value">${totOut}</div>
+                        <div class="call-stat-rate">${(totOut / days).toFixed(1)} /day</div>
+                    </div>
+                    <div class="call-stat-card">
+                        <div class="call-stat-label">Inbound</div>
+                        <div class="call-stat-value">${totIn}</div>
+                        <div class="call-stat-rate">${(totIn / days).toFixed(1)} /day</div>
+                    </div>
+                    <div class="call-stat-card accent">
+                        <div class="call-stat-label">Conversations</div>
+                        <div class="call-stat-value">${totConvos}</div>
+                        <div class="call-stat-rate">${(totConvos / days).toFixed(1)} /day</div>
+                    </div>
+                </div>
+                <div class="call-stat-grid two-col">
+                    <div class="call-stat-card">
+                        <div class="call-stat-label">Avg Talk Time</div>
+                        <div class="call-stat-value">${avgMin}:${String(avgSecRem).padStart(2, '0')}</div>
+                    </div>
+                    <div class="call-stat-card">
+                        <div class="call-stat-label">Total Minutes</div>
+                        <div class="call-stat-value">${totalMin.toLocaleString()}</div>
+                    </div>
+                </div>
+                <div class="drawer-call-chart-container">
+                    <canvas id="callChart"></canvas>
+                </div>
+            `;
+
+            renderDrawerCallChart(agentId, filtered, document.getElementById('callChart'));
+        }
+
+        function renderDrawerCallChart(agentId, rows, canvas) {
+            if (!canvas) return;
+
+            // Build date-keyed map
+            const dateMap = {};
+            for (const r of rows) {
+                dateMap[r.call_date] = r;
+            }
+
+            // Build full date range for chart
+            const labels = [];
+            const outData = [];
+            const inData = [];
+            const cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - drawerRange);
+
+            for (let d = new Date(cutoff); d <= new Date(); d.setDate(d.getDate() + 1)) {
+                const ds = d.toISOString().slice(0, 10);
+                labels.push(ds.slice(5)); // MM-DD
+                const row = dateMap[ds];
+                outData.push(row ? row.outbound_total : 0);
+                inData.push(row ? row.inbound_total : 0);
+            }
+
+            const avgOut = outData.reduce((a, b) => a + b, 0) / (outData.length || 1);
+
+            new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Outbound',
+                            data: outData,
+                            backgroundColor: '#C75912',
+                            borderRadius: 2,
+                        },
+                        {
+                            label: 'Inbound',
+                            data: inData,
+                            backgroundColor: '#DCCCBB',
+                            borderRadius: 2,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+                        annotation: {
+                            annotations: {
+                                avgLine: {
+                                    type: 'line',
+                                    yMin: avgOut,
+                                    yMax: avgOut,
+                                    borderColor: '#C75912',
+                                    borderWidth: 1.5,
+                                    borderDash: [4, 4],
+                                    label: { display: false }
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            stacked: true,
+                            grid: { display: false },
+                            ticks: { font: { size: 9 }, maxRotation: 45 }
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            grid: { color: '#f0ebe4' },
+                            ticks: { font: { size: 10 } }
+                        }
+                    }
+                }
+            });
+        }
+
         // ── Build Agent Matrix ──
         function buildMatrix(rows) {
             const agentMap = {};
@@ -1383,6 +1598,9 @@
                 } else if (sortCol === 'streak') {
                     aVal = streakData[a.id]?.current || 0;
                     bVal = streakData[b.id]?.current || 0;
+                } else if (sortCol === 'calls') {
+                    aVal = callData[a.id]?.outPerDay || 0;
+                    bVal = callData[b.id]?.outPerDay || 0;
                 } else {
                     aVal = a.lists[sortCol]?.lead_count || 0;
                     bVal = b.lists[sortCol]?.lead_count || 0;
@@ -1393,6 +1611,7 @@
             let headerHTML = '<tr>';
             headerHTML += `<th data-col="name" class="${sortCol === 'name' ? 'sorted' : ''}" onclick="setSort('name')">Agent <span class="sort-arrow">${sortCol === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             headerHTML += `<th class="streak-cell ${sortCol === 'streak' ? 'sorted' : ''}" onclick="setSort('streak')">Streak <span class="sort-arrow">${sortCol === 'streak' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
+            headerHTML += `<th class="calls-cell ${sortCol === 'calls' ? 'sorted' : ''}" onclick="setSort('calls')">Calls/Day <span class="sort-arrow">${sortCol === 'calls' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             for (const sl of smartLists) {
                 const abbr = sl.name.length > 14 ? sl.name.slice(0, 12) + '…' : sl.name;
                 const cls = sortCol === sl.id ? 'sorted' : '';
@@ -1409,6 +1628,7 @@
                 const safeName = escHTML(agent.name).replace(/'/g, "\\'");
                 bodyHTML += `<td><a class="agent-name-link" onclick="openDrawer(${agent.id}, '${safeName}')">${escHTML(agent.name)}</a></td>`;
                 bodyHTML += `<td class="streak-cell" data-agent-id="${agent.id}"></td>`;
+                bodyHTML += `<td class="calls-cell" data-agent-id="${agent.id}">—</td>`;
                 for (const sl of smartLists) {
                     const entry = agent.lists[sl.id];
                     if (entry) {
@@ -1424,6 +1644,7 @@
             }
             tbody.innerHTML = bodyHTML;
             updateStreakCells();
+            if (callDataLoaded) updateCallCells();
         }
 
         // ── Agent Drawer ──
@@ -1586,6 +1807,7 @@
             renderDrawerChart(data, dates);
             renderDrawerTable(data, dates);
             renderDrawerStreak(drawerAgentId, history);
+            renderDrawerCallSection(drawerAgentId);
         }
 
         function renderDrawerChart(data, dates) {
@@ -1719,7 +1941,7 @@
         }
 
         // ── Init ──
-        loadDashboard().then(() => loadAllStreaks());
+        loadDashboard().then(() => { loadAllStreaks(); loadCallData(); });
     </script>
 </body>
 </html>
