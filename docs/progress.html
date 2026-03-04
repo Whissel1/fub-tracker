@@ -543,26 +543,6 @@
             padding: 24px 32px;
         }
 
-        /* Drawer Status Bar */
-        .drawer-status-bar {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 20px;
-        }
-        .drawer-status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 600;
-        }
-        .drawer-status-badge.green { background: var(--green-bg); color: var(--green); }
-        .drawer-status-badge.yellow { background: var(--yellow-bg); color: var(--yellow); }
-        .drawer-status-badge.red { background: var(--red-bg); color: var(--red); }
-
         /* Drawer Sections */
         .drawer-section {
             margin-bottom: 24px;
@@ -694,6 +674,7 @@
         .dot-good { background: var(--green); }
         .dot-miss { background: var(--light-cream); }
         .streak-tier-label { font-family: 'Playfair Display', serif; font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+        .streak-7day-summary { font-size: 12px; color: var(--gray-light); margin-bottom: 2px; }
         .streak-best { font-size: 12px; color: var(--gray-light); }
 
         /* ── Call Activity Styles ── */
@@ -833,9 +814,8 @@
                 </div>
             </div>
             <div class="drawer-content" id="drawerContent">
-                <div class="drawer-status-bar" id="drawerStatusBar"></div>
-                <div class="drawer-streak-section" id="drawerStreakWidget" style="display:none;"></div>
                 <div id="drawerCallSection" class="drawer-call-section"></div>
+                <div class="drawer-streak-section" id="drawerStreakWidget" style="display:none;"></div>
                 <div class="drawer-section">
                     <div class="drawer-section-title">Lead Count Trend</div>
                     <div class="drawer-range-toggle" id="drawerRangeToggle">
@@ -1196,6 +1176,9 @@
             // Calc dot trail from drawer history
             const result = history ? calcStreakFromSnapshots(history) : { dailyResults: [] };
 
+            const last7 = result.dailyResults.slice(-7);
+            const goodCount = last7.filter(d => d.good).length;
+
             widget.style.display = 'flex';
             widget.innerHTML = `
                 <div class="drawer-ring-wrap">
@@ -1204,6 +1187,7 @@
                 </div>
                 ${tier.label ? `<div class="streak-tier-label" style="color:${tier.color}">${tier.label}</div>` : ''}
                 <div class="dot-trail">${dotTrailHTML(result.dailyResults)}</div>
+                <div class="streak-7day-summary">Last 7 days: ${goodCount}/7 good</div>
                 ${sd.best > 0 ? `<div class="streak-best">Best: ${sd.best} days</div>` : ''}
             `;
         }
@@ -1660,19 +1644,6 @@
             drawerAgentId = agentId;
             drawerRange = 7;
             document.getElementById('drawerAgentName').textContent = agentName;
-
-            // Build status badges from current data
-            const statusBar = document.getElementById('drawerStatusBar');
-            let badges = '';
-            for (const sl of smartLists) {
-                const row = allAgentRows.find(r => r.agent_id === agentId && r.smart_list_id === sl.id);
-                if (row) {
-                    const status = getStatus(row.lead_count, sl.id);
-                    const abbr = sl.name.length > 18 ? sl.name.slice(0, 16) + '…' : sl.name;
-                    badges += `<span class="drawer-status-badge ${status}" title="${sl.name}">${abbr}: ${row.lead_count}</span>`;
-                }
-            }
-            statusBar.innerHTML = badges;
 
             // Reset range toggle
             document.querySelectorAll('.drawer-range-btn').forEach(btn => {
