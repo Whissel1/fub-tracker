@@ -848,26 +848,33 @@
         .ring-bg { fill: none; stroke: var(--warm-white); }
         .ring-fg { fill: none; stroke-linecap: round; transition: stroke-dashoffset 0.8s ease; }
 
-        /* Compact header streak */
+        /* Compact header streak — tier-colored pill */
         .header-streak {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 10px;
+            padding: 6px 14px 6px 6px;
+            border-radius: 24px;
+            border: 1px solid var(--light-cream);
+            transition: background 0.3s ease, border-color 0.3s ease;
         }
-        .header-streak-ring { position: relative; width: 40px; height: 40px; }
+        .header-streak-ring { position: relative; width: 48px; height: 48px; flex-shrink: 0; }
         .header-streak-ring svg { display: block; }
         .header-streak-num {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            font-size: 13px; font-weight: 700; color: var(--dune); line-height: 1;
+            font-size: 15px; font-weight: 700; color: var(--dune); line-height: 1;
         }
         .header-streak-info {
-            display: flex; flex-direction: column; gap: 1px;
+            display: flex; flex-direction: column; gap: 3px;
         }
         .header-streak-label {
-            font-size: 11px; font-weight: 600; color: var(--dune); line-height: 1.2;
+            font-size: 12px; font-weight: 600; color: var(--dune); line-height: 1.2;
         }
-        .header-streak-dots { display: flex; gap: 3px; }
-        .header-streak-dots span { width: 6px; height: 6px; border-radius: 50%; }
+        .header-streak-tier {
+            font-weight: 700;
+        }
+        .header-streak-dots { display: flex; gap: 4px; }
+        .header-streak-dots span { width: 8px; height: 8px; border-radius: 50%; transition: background 0.2s; }
         .dot-good { background: var(--green); }
         .dot-miss { background: var(--light-cream); }
 
@@ -1385,7 +1392,7 @@
             const offset = circ * (1 - pct);
             const tier = getStreakTier(days);
             const half = size / 2;
-            const fontSize = size <= 40 ? 11 : 28;
+            const fontSize = size <= 40 ? 11 : size <= 52 ? 15 : 28;
             return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
                 <circle class="ring-bg" cx="${half}" cy="${half}" r="${r}" stroke-width="${strokeW}"/>
                 <circle class="ring-fg" cx="${half}" cy="${half}" r="${r}" stroke-width="${strokeW}"
@@ -1555,6 +1562,22 @@
             });
         }
 
+        function getStreakPillBg(tier, days) {
+            // Tier-tinted background for the streak pill
+            if (days >= 30) return 'rgba(163, 80, 27, 0.08)';  // orange-deep tint
+            if (days >= 14) return 'rgba(199, 89, 18, 0.08)';  // blaze-orange tint
+            if (days >= 7)  return 'rgba(205, 118, 61, 0.07)'; // orange-light tint
+            if (days >= 1)  return 'rgba(206, 184, 161, 0.12)'; // medium-warm tint
+            return 'transparent';
+        }
+        function getStreakPillBorder(tier, days) {
+            if (days >= 30) return 'rgba(163, 80, 27, 0.2)';
+            if (days >= 14) return 'rgba(199, 89, 18, 0.18)';
+            if (days >= 7)  return 'rgba(205, 118, 61, 0.15)';
+            if (days >= 1)  return 'rgba(206, 184, 161, 0.2)';
+            return '';
+        }
+
         function renderDrawerStreak(agentId, history) {
             const container = document.getElementById('drawerHeaderStreak');
             if (!container) return;
@@ -1563,18 +1586,22 @@
             const durableBest = Math.max(result.best, storedBest);
             const tier = getStreakTier(result.current);
             const last7 = result.dailyResults.slice(-7);
+            const pillBg = getStreakPillBg(tier, result.current);
+            const pillBorder = getStreakPillBorder(tier, result.current);
 
             const dots = last7.map(d =>
                 `<span class="${d.good ? 'dot-good' : 'dot-miss'}"></span>`
             ).join('');
 
+            const pillStyle = `background:${pillBg};${pillBorder ? `border-color:${pillBorder};` : ''}`;
+
             container.innerHTML = `
-                <div class="header-streak">
+                <div class="header-streak" style="${pillStyle}">
                     <div class="header-streak-ring">
-                        ${streakRingSVG(result.current, Math.max(durableBest, 1), 40, 3)}
+                        ${streakRingSVG(result.current, Math.max(durableBest, 1), 48, 4)}
                     </div>
                     <div class="header-streak-info">
-                        <div class="header-streak-label">${result.current}-day streak${tier.label ? ` · <span style="color:${tier.color}">${tier.label}</span>` : ''}</div>
+                        <div class="header-streak-label">${result.current}-day streak${tier.label ? ` · <span class="header-streak-tier" style="color:${tier.color}">${tier.label}</span>` : ''}</div>
                         <div class="header-streak-dots">${dots}</div>
                     </div>
                 </div>
