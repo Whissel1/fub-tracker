@@ -280,6 +280,17 @@
         .toggle-switch input:checked + .toggle-slider { background: var(--blaze-orange); }
         .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
 
+        .toggle-wrap { display: flex; align-items: center; gap: 8px; }
+        .save-flash {
+            font-size: 11px;
+            color: #4caf50;
+            font-weight: 600;
+            opacity: 0;
+            transition: opacity 0.3s;
+            white-space: nowrap;
+        }
+        .save-flash.show { opacity: 1; }
+
         .manage-count {
             text-align: center;
             padding: 12px 28px;
@@ -1128,10 +1139,13 @@
                     const nameClass = a.visible ? '' : ' hidden-agent';
                     html += `<div class="manage-agent-row">
                         <span class="manage-agent-name${nameClass}" id="maName${a.id}">${a.name}</span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" ${checked} onchange="toggleAgentVisible(${a.id}, this.checked)" />
-                            <span class="toggle-slider"></span>
-                        </label>
+                        <div class="toggle-wrap">
+                            <span class="save-flash" id="maSaved${a.id}">Saved ✓</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" ${checked} onchange="toggleAgentVisible(${a.id}, this.checked)" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
                     </div>`;
                 }
                 html += `</div>`;
@@ -1163,6 +1177,12 @@
                     .update({ visible })
                     .eq('id', agentId);
                 if (error) throw error;
+                // Flash saved indicator
+                const flash = document.getElementById('maSaved' + agentId);
+                if (flash) {
+                    flash.classList.add('show');
+                    setTimeout(() => flash.classList.remove('show'), 1500);
+                }
             } catch (err) {
                 // Revert on failure
                 if (agent) agent.visible = !visible;
