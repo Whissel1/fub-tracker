@@ -1112,8 +1112,8 @@
                 groups[role].push(a);
             }
 
-            // Sort roles: Agent first, then Broker, then others
-            const roleOrder = ['Agent', 'Broker', 'Lender'];
+            // Sort roles by org hierarchy
+            const roleOrder = ['Agent', 'ISA / Team Leader', 'Admin', 'Owner', 'Lender'];
             const sortedRoles = Object.keys(groups).sort((a, b) => {
                 const ai = roleOrder.indexOf(a), bi = roleOrder.indexOf(b);
                 return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
