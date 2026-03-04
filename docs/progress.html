@@ -613,6 +613,10 @@
         }
 
         /* Drawer Table */
+        #drawerTableWrap {
+            max-height: 400px;
+            overflow-y: auto;
+        }
         .drawer-table {
             width: 100%;
             border-collapse: separate;
@@ -626,6 +630,9 @@
             background: var(--dune);
             color: white;
             padding: 10px 14px;
+            position: sticky;
+            top: 0;
+            z-index: 2;
             text-align: center;
             font-weight: 600;
             font-size: 12px;
@@ -998,11 +1005,16 @@
             const info = e.target.closest('.th-info');
             if (!info) return;
             const g = info.dataset.green, y = info.dataset.yellow;
-            if (!g) return;
-            globalTip.innerHTML =
-                `<span class="th-tip-green">● Green:</span> ≤ ${g}<br>`
-                + `<span class="th-tip-yellow">● Yellow:</span> ≤ ${y}<br>`
-                + `<span class="th-tip-red">● Red:</span> &gt; ${y}`;
+            const tip = info.dataset.tip;
+            if (!g && !tip) return;
+            if (tip) {
+                globalTip.innerHTML = tip;
+            } else {
+                globalTip.innerHTML =
+                    `<span class="th-tip-green">● Green:</span> ≤ ${g}<br>`
+                    + `<span class="th-tip-yellow">● Yellow:</span> ≤ ${y}<br>`
+                    + `<span class="th-tip-red">● Red:</span> &gt; ${y}`;
+            }
             globalTip.style.display = 'block';
             globalTip.style.visibility = 'hidden';
             const rect = info.getBoundingClientRect();
@@ -1241,7 +1253,7 @@
             document.querySelectorAll('.calls-cell[data-agent-id]').forEach(cell => {
                 const id = cell.dataset.agentId;
                 const cd = callData[id];
-                cell.textContent = cd ? cd.outPerDay.toFixed(1) : '—';
+                cell.textContent = cd ? Math.round(cd.outPerDay) : '0';
             });
         }
 
@@ -1255,10 +1267,6 @@
             const cutoffStr = cutoff.toISOString().slice(0, 10);
             const filtered = rows.filter(r => r.call_date >= cutoffStr);
 
-            if (filtered.length === 0) {
-                container.style.display = 'none';
-                return;
-            }
             container.style.display = 'block';
 
             const days = drawerRange;
@@ -1611,7 +1619,7 @@
             let headerHTML = '<tr>';
             headerHTML += `<th data-col="name" class="${sortCol === 'name' ? 'sorted' : ''}" onclick="setSort('name')">Agent <span class="sort-arrow">${sortCol === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             headerHTML += `<th class="streak-cell ${sortCol === 'streak' ? 'sorted' : ''}" onclick="setSort('streak')">Streak <span class="sort-arrow">${sortCol === 'streak' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
-            headerHTML += `<th class="calls-cell ${sortCol === 'calls' ? 'sorted' : ''}" onclick="setSort('calls')">Calls/Day <span class="sort-arrow">${sortCol === 'calls' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
+            headerHTML += `<th class="calls-cell ${sortCol === 'calls' ? 'sorted' : ''}" onclick="setSort('calls')">Calls/Day <span class="th-info" onclick="event.stopPropagation()" data-tip="7-day average of outbound calls per day">i</span> <span class="sort-arrow">${sortCol === 'calls' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             for (const sl of smartLists) {
                 const abbr = sl.name.length > 14 ? sl.name.slice(0, 12) + '…' : sl.name;
                 const cls = sortCol === sl.id ? 'sorted' : '';
