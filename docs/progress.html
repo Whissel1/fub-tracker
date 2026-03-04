@@ -1796,13 +1796,10 @@
             const cutoffStr = cutoff.toISOString().slice(0, 10);
             const filtered = history.filter(h => h.date >= cutoffStr);
 
-            // Get unique sorted dates
-            const dates = [...new Set(filtered.map(h => h.date))].sort();
-
-            if (dates.length === 0) {
-                document.getElementById('drawerTableWrap').innerHTML = '<div class="drawer-empty">No data in this range</div>';
-                if (drawerChart) { drawerChart.destroy(); drawerChart = null; }
-                return;
+            // Generate full date sequence for the selected range
+            const dates = [];
+            for (let d = new Date(cutoff); d <= new Date(); d.setDate(d.getDate() + 1)) {
+                dates.push(d.toISOString().slice(0, 10));
             }
 
             // Build data structure: { list_id: { date: lead_count } }
