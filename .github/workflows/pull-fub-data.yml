@@ -1,15 +1,41 @@
-name: Pull FUB Data
+# =============================================================
+# FUB Data Sync — GitHub Actions Workflow
+#
+# PRIMARY automation for all scheduled data pulls. This is the
+# single source of truth for scheduling. Do NOT use pg_cron or
+# other schedulers — see ARCHITECTURE.md for rationale.
+#
+# Schedule (all times PST, UTC offsets shown):
+#   3am PST  (11:00 UTC) — Agent sync + Call data
+#   7am PST  (15:00 UTC) — SmartList snapshot (morning)
+#   4pm PST  (00:00 UTC) — Call data + SmartList snapshot (afternoon)
+#
+# NOTE: During PDT (Mar–Nov), times shift 1 hour later in local
+# time (e.g., 3am PST fires at 4am PDT). The UTC crons stay fixed.
+# =============================================================
+
+name: FUB Data Sync
 
 on:
   schedule:
-    - cron: '0 14 * * *'
+    # 3am PST = 11:00 UTC — agents + calls (previous-day lock-in)
+    - cron: '0 11 * * *'
+    # 7am PST = 15:00 UTC — morning smart list snapshot
+    - cron: '0 15 * * *'
+    # 4pm PST = 00:00 UTC — afternoon calls + smart lists
     - cron: '0 0 * * *'
   workflow_dispatch:
+    # Manual trigger runs ALL steps
 
 jobs:
-  pull-data:
+  sync:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
+    env:
+      FUB_API_KEY: ${{ secrets.FUB_API_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
     steps:
       - name: Checkout code
@@ -23,16 +49,17 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # ── Agents: 3am PST daily ──────────────────────────────
       - name: Sync agents
-        env:
-          FUB_API_KEY: ${{ secrets.FUB_API_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        if: github.event.schedule == '0 11 * * *' || github.event_name == 'workflow_dispatch'
         run: node scripts/sync-agents.js
 
-      - name: Pull FUB smart list data
-        env:
-          FUB_API_KEY: ${{ secrets.FUB_API_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      # ── Calls: 3am PST + 4pm PST ──────────────────────────
+      - name: Pull call data
+        if: github.event.schedule == '0 11 * * *' || github.event.schedule == '0 0 * * *' || github.event_name == 'workflow_dispatch'
+        run: node scripts/pull-fub-calls.js
+
+      # ── Smart Lists: 7am PST + 4pm PST ────────────────────
+      - name: Pull smart list data
+        if: github.event.schedule == '0 15 * * *' || github.event.schedule == '0 0 * * *' || github.event_name == 'workflow_dispatch'
         run: node scripts/pull-fub-data.js
