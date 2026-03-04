@@ -1374,12 +1374,12 @@
             const dayMap = {};
             for (const h of history) {
                 if (h.date < STREAK_START) continue;
-                if (!dayMap[h.date]) dayMap[h.date] = 0;
+                if (!dayMap[h.date]) dayMap[h.date] = new Set();
                 const status = getStatus(h.lead_count, h.list_id);
-                if (status === 'green') dayMap[h.date]++;
+                if (status === 'green') dayMap[h.date].add(h.list_id);
             }
             const sortedDates = Object.keys(dayMap).sort();
-            const dailyResults = sortedDates.map(d => ({ date: d, good: dayMap[d] >= STREAK_GOOD_THRESHOLD }));
+            const dailyResults = sortedDates.map(d => ({ date: d, good: dayMap[d].size >= STREAK_GOOD_THRESHOLD }));
 
             // Current streak: consecutive good days backward from end
             let current = 0;
@@ -1406,10 +1406,7 @@
                 // 2. Determine which agents need recalculation (stale = updated before today)
                 const today = new Date().toISOString().slice(0, 10);
                 const agentIds = allAgentRows.map(r => r.agent_id).filter((v, i, a) => a.indexOf(v) === i);
-                const staleIds = agentIds.filter(id => {
-                    const rec = streakMap[id];
-                    return !rec || (rec.updated_at && rec.updated_at.slice(0, 10) < today);
-                });
+                const staleIds = agentIds; // Always recalculate — correctness over caching
 
                 // 3. For stale agents, fetch snapshot history via snapshots + agent_list_counts
                 if (staleIds.length > 0) {
@@ -1489,11 +1486,9 @@
 
         function renderDrawerStreak(agentId, history) {
             const widget = document.getElementById('drawerStreakWidget');
-            const sd = streakData[agentId] || { current: 0, best: 0 };
-            const tier = getStreakTier(sd.current);
-
-            // Calc dot trail from drawer history
-            const result = history ? calcStreakFromSnapshots(history) : { dailyResults: [] };
+            // Use on-the-fly calculation for BOTH ring and dots — single source of truth
+            const result = history ? calcStreakFromSnapshots(history) : { current: 0, best: 0, dailyResults: [] };
+            const tier = getStreakTier(result.current);
 
             const last7 = result.dailyResults.slice(-7);
             const goodCount = last7.filter(d => d.good).length;
@@ -1501,13 +1496,13 @@
             widget.style.display = 'flex';
             widget.innerHTML = `
                 <div class="drawer-ring-wrap">
-                    ${streakRingSVG(sd.current, Math.max(sd.best, 1), 120, 8)}
+                    ${streakRingSVG(result.current, Math.max(result.best, 1), 120, 8)}
                     <div class="drawer-ring-label">day streak</div>
                 </div>
                 ${tier.label ? `<div class="streak-tier-label" style="color:${tier.color}">${tier.label}</div>` : ''}
                 <div class="dot-trail">${dotTrailHTML(result.dailyResults)}</div>
                 <div class="streak-7day-summary">Last 7 days: ${goodCount}/7 good</div>
-                ${sd.best > 0 ? `<div class="streak-best">Best: ${sd.best} days</div>` : ''}
+                ${result.best > 0 ? `<div class="streak-best">Best: ${result.best} days</div>` : ''}
             `;
         }
 
