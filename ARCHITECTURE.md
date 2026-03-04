@@ -194,6 +194,19 @@ Agent roster synced from FUB. Source of truth for agent identity.
 `is_active` = automated (from FUB). `visible` = manual (admin toggle in
 Manage Agents modal). Dashboard shows agents where `visible = true`.
 
+**RLS Policies:**
+
+| Policy Name                | Operation | Role         | Notes                                      |
+|----------------------------|-----------|--------------|--------------------------------------------|
+| `Allow read access`        | SELECT    | public       | Dashboard reads via anon key               |
+| `Service role full access` | ALL       | service_role | GitHub Actions scripts use service role key |
+| `Allow anon update visible`| UPDATE    | anon         | Manage Agents toggle writes via anon key   |
+
+⚠️ The anon UPDATE policy is intentionally broad (allows updating any
+column, not just `visible`). This should be tightened to a column-specific
+check when auth is implemented. See BACKLOG.md → "Tighten Agents Table
+RLS Policy".
+
 ### `smart_lists`
 
 Static reference table for the 9 tracked SmartLists.
@@ -382,6 +395,25 @@ Contains all UI logic, Supabase queries, and rendering.
 - **Lead Count Trend:** Sparkline chart with 7d/14d/30d toggle
 - **Manage Agents modal:** Toggle agent visibility on dashboard
 - **Threshold editor:** Inline editing of green/yellow/red thresholds
+
+### Supabase Access from the Frontend
+
+The dashboard connects to Supabase using the **anon key** via the
+Supabase JS client (`createClient(SUPABASE_URL, SUPABASE_ANON_KEY)`).
+This means all frontend database operations are subject to **Row Level
+Security (RLS)** policies. The anon key can:
+
+- **SELECT** from `agents`, `smart_lists`, `thresholds`, `snapshots`,
+  `agent_list_counts`, `call_daily_stats`, `agent_streaks`
+- **UPDATE** the `agents` table (for the Manage Agents visibility toggle)
+
+It **cannot** INSERT, DELETE, or modify any other table. All write-heavy
+operations (syncing agents, pulling calls, pulling SmartLists) go through
+GitHub Actions using the **service role key**, which bypasses RLS.
+
+**Important:** Supabase silently returns empty results (no error) when an
+RLS-denied operation is attempted. This makes debugging RLS issues
+non-obvious — the operation appears to succeed but nothing is persisted.
 
 ### `docs/index.html`
 
@@ -704,6 +736,7 @@ fub-tracker/
 │   ├── pull-fub-calls.js        ← Call data pull (Node.js)
 │   └── pull-fub-data.js         ← SmartList pull (Node.js)
 ├── ARCHITECTURE.md              ← This file
+├── BACKLOG.md                   ← Living backlog (features, bugs, ideas)
 ├── package.json                 ← Dependencies (@supabase/supabase-js)
 └── README.md                    ← Project overview
 ```

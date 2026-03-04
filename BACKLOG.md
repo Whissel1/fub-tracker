@@ -32,6 +32,8 @@ _Completed items moved here with ship date for reference._
 | 2026-03-04 | Fix timezone bug (dateOnly → datePacific) |
 | 2026-03-04 | ARCHITECTURE.md (~710 lines) |
 | 2026-03-04 | Upgrade to 15-min refresh intervals (6am–5pm PST) |
+| 2026-03-04 | Latest pull timestamp display (Pacific time, full datetime) |
+| 2026-03-04 | Fix Manage Agents toggle persistence (RLS policy for anon UPDATE) |
 
 ---
 
@@ -83,6 +85,13 @@ Filter smart list data by lead source (company-provided vs. agent-generated). De
 **Status:** Not started
 
 Define and implement cleanup for old snapshots (e.g., older than 6 months). Need to evaluate impact on streak calculations and historical trend charts before deleting anything. Currently ~405 snapshot rows/day, ~10K agent_list_counts/day — not urgent but will matter at scale.
+
+#### Tighten Agents Table RLS Policy
+**Priority:** Low (do when auth ships)
+**Status:** Not started — blocked on auth implementation
+**Depends on:** Settings Page / auth system
+
+The `agents` table currently has a broad `"Allow anon update visible"` RLS policy that permits the anon key to UPDATE any column. This was added to fix the Manage Agents toggle persistence bug (the frontend writes `visible` directly via the Supabase JS client). When auth is implemented, this should be scoped to only allow updating the `visible` column, and ideally require an authenticated admin role rather than anon.
 
 #### Beginning-of-Day Smart List Snapshot
 **Priority:** TBD
