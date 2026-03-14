@@ -1619,7 +1619,8 @@
                     .from('call_daily_stats')
                     .select('agent_id, call_date, outbound_total, inbound_total, outbound_duration_sec, inbound_duration_sec, outbound_conversations, inbound_conversations')
                     .gte('call_date', cutoffStr)
-                    .order('call_date', { ascending: true });
+                    .order('call_date', { ascending: true })
+                    .limit(10000);
 
                 if (error) throw error;
 
