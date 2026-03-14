@@ -152,8 +152,15 @@ async function main() {
     throw new Error(`Failed to read sync cursor: ${cursorError.message}`);
   }
 
-  const syncSince = cursor.last_synced_at;
-  console.log(`Syncing calls since: ${syncSince}`);
+  // Sync from midnight UTC of the cursor's Pacific date. This ensures we
+  // re-pull the full day's calls on every run so the upsert overwrites
+  // with complete daily totals — not just the partial increment.
+  // UTC midnight <= Pacific midnight, so we may fetch a few extra calls
+  // from late the previous Pacific day; that's fine since aggregation
+  // groups by Pacific date and the upsert is idempotent.
+  const cursorDate = datePacific(cursor.last_synced_at);
+  const syncSince = `${cursorDate}T00:00:00Z`;
+  console.log(`Syncing calls from start of cursor date: ${syncSince} (cursor was ${cursor.last_synced_at})`);
 
   // Step 2: Fetch calls from FUB
   const calls = await fetchCallsSince(syncSince);
