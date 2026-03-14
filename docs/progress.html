@@ -1280,15 +1280,21 @@
                 // Grab the most recent pulled_at timestamp across all lists
                 pullTimestamp = snapData[0]?.pulled_at || null;
 
-                // 4. Load agent_list_counts for latest snapshots
+                // 4. Load agent_list_counts for latest snapshots (paginated)
                 let allCounts = [];
-                const { data: countData, error: countErr } = await sb
-                    .from('agent_list_counts')
-                    .select('agent_id, smart_list_id, lead_count, avg_days_since_last_attempt, max_days_since_last_attempt, leads_with_no_attempt_30d, leads_with_recent_2way, leads_with_site_activity_14d')
-                    .in('snapshot_id', latestSnapshotIds)
-                    .limit(5000);
-                if (countErr) throw countErr;
-                allCounts = countData;
+                let countOffset = 0;
+                while (true) {
+                    const { data: countPage, error: countErr } = await sb
+                        .from('agent_list_counts')
+                        .select('agent_id, smart_list_id, lead_count, avg_days_since_last_attempt, max_days_since_last_attempt, leads_with_no_attempt_30d, leads_with_recent_2way, leads_with_site_activity_14d')
+                        .in('snapshot_id', latestSnapshotIds)
+                        .range(countOffset, countOffset + 999);
+                    if (countErr) throw countErr;
+                    if (!countPage || countPage.length === 0) break;
+                    allCounts = allCounts.concat(countPage);
+                    if (countPage.length < 1000) break;
+                    countOffset += 1000;
+                }
 
                 // 5. Load agent names (only visible agents)
                 const agentIds = [...new Set(allCounts.map(c => c.agent_id))];
@@ -1618,18 +1624,28 @@
                 cutoff.setDate(cutoff.getDate() - 35);
                 const cutoffStr = cutoff.toISOString().slice(0, 10);
 
-                const { data, error } = await sb
-                    .from('call_daily_stats')
-                    .select('agent_id, call_date, outbound_total, inbound_total, outbound_duration_sec, inbound_duration_sec, outbound_conversations, inbound_conversations')
-                    .gte('call_date', cutoffStr)
-                    .order('call_date', { ascending: true })
-                    .limit(10000);
-
-                if (error) throw error;
+                // Paginate to overcome Supabase PostgREST 1000-row server cap
+                let allCallRows = [];
+                const PAGE = 1000;
+                let offset = 0;
+                while (true) {
+                    const { data: page, error: pageErr } = await sb
+                        .from('call_daily_stats')
+                        .select('agent_id, call_date, outbound_total, inbound_total, outbound_duration_sec, inbound_duration_sec, outbound_conversations, inbound_conversations')
+                        .gte('call_date', cutoffStr)
+                        .order('call_date', { ascending: true })
+                        .range(offset, offset + PAGE - 1);
+                    if (pageErr) throw pageErr;
+                    if (!page || page.length === 0) break;
+                    allCallRows = allCallRows.concat(page);
+                    if (page.length < PAGE) break;
+                    offset += PAGE;
+                }
+                console.log(`📞 Call data: fetched ${allCallRows.length} rows in ${Math.ceil(offset / PAGE) + 1} pages`);
 
                 // Group by agent
                 callDataCache = {};
-                for (const row of (data || [])) {
+                for (const row of allCallRows) {
                     if (!callDataCache[row.agent_id]) callDataCache[row.agent_id] = [];
                     callDataCache[row.agent_id].push(row);
                 }
