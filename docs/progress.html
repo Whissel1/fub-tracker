@@ -1265,7 +1265,8 @@
                     .from('snapshots')
                     .select('id, smart_list_id, pull_date, pulled_at')
                     .eq('status', 'complete')
-                    .order('pulled_at', { ascending: false });
+                    .order('pulled_at', { ascending: false })
+                    .limit(5000);
                 if (snapErr) throw snapErr;
 
                 const latestByList = {};
@@ -1284,7 +1285,8 @@
                 const { data: countData, error: countErr } = await sb
                     .from('agent_list_counts')
                     .select('agent_id, smart_list_id, lead_count, avg_days_since_last_attempt, max_days_since_last_attempt, leads_with_no_attempt_30d, leads_with_recent_2way, leads_with_site_activity_14d')
-                    .in('snapshot_id', latestSnapshotIds);
+                    .in('snapshot_id', latestSnapshotIds)
+                    .limit(5000);
                 if (countErr) throw countErr;
                 allCounts = countData;
 
@@ -1476,7 +1478,8 @@
                         .select('id, smart_list_id, pull_date')
                         .eq('status', 'complete')
                         .gte('pull_date', STREAK_START)
-                        .order('pull_date', { ascending: true });
+                        .order('pull_date', { ascending: true })
+                        .limit(10000);
 
                     if (snapErr) { console.error('loadAllStreaks snapshot query failed:', snapErr); }
                     if (snaps && snaps.length > 0) {
@@ -2140,7 +2143,8 @@
                     .select('id, smart_list_id, pull_date')
                     .eq('status', 'complete')
                     .gte('pull_date', sinceDate)
-                    .order('pull_date', { ascending: true });
+                    .order('pull_date', { ascending: true })
+                    .limit(10000);
                 if (snapErr) throw snapErr;
 
                 if (!snaps || snaps.length === 0) {
@@ -2155,7 +2159,8 @@
                     .from('agent_list_counts')
                     .select('smart_list_id, lead_count, snapshot_id')
                     .eq('agent_id', agentId)
-                    .in('snapshot_id', snapIds);
+                    .in('snapshot_id', snapIds)
+                    .limit(5000);
                 if (cErr) throw cErr;
 
                 // Build date-keyed lookup: snapId → pull_date
