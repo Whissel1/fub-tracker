@@ -2154,30 +2154,55 @@
                 since.setDate(since.getDate() - 35);
                 const sinceDate = since.toISOString().slice(0, 10);
 
-                const { data: snaps, error: snapErr } = await sb
-                    .from('snapshots')
-                    .select('id, smart_list_id, pull_date')
-                    .eq('status', 'complete')
-                    .gte('pull_date', sinceDate)
-                    .order('pull_date', { ascending: true })
-                    .limit(10000);
-                if (snapErr) throw snapErr;
+                // Paginate snapshots (duplicate snapshots from 15-min cron can exceed 1000 rows)
+                let allSnaps = [];
+                let snapOffset = 0;
+                while (true) {
+                    const { data: snapPage, error: snapErr } = await sb
+                        .from('snapshots')
+                        .select('id, smart_list_id, pull_date')
+                        .eq('status', 'complete')
+                        .gte('pull_date', sinceDate)
+                        .order('pull_date', { ascending: true })
+                        .range(snapOffset, snapOffset + 999);
+                    if (snapErr) throw snapErr;
+                    if (!snapPage || snapPage.length === 0) break;
+                    allSnaps = allSnaps.concat(snapPage);
+                    if (snapPage.length < 1000) break;
+                    snapOffset += 1000;
+                }
 
-                if (!snaps || snaps.length === 0) {
+                if (allSnaps.length === 0) {
                     document.getElementById('drawerTableWrap').innerHTML = '<div class="drawer-empty">No historical data available</div>';
                     return;
                 }
 
+                // Deduplicate: keep only the latest snapshot per (smart_list_id, pull_date)
+                const snapKey = {};
+                for (const s of allSnaps) {
+                    const key = `${s.smart_list_id}_${s.pull_date}`;
+                    snapKey[key] = s; // last one wins (ordered ascending)
+                }
+                const snaps = Object.values(snapKey);
                 const snapIds = snaps.map(s => s.id);
+                console.log(`📊 Drawer: ${allSnaps.length} total snapshots deduped to ${snaps.length}`);
 
-                // Fetch agent counts for these snapshots
-                const { data: counts, error: cErr } = await sb
-                    .from('agent_list_counts')
-                    .select('smart_list_id, lead_count, snapshot_id')
-                    .eq('agent_id', agentId)
-                    .in('snapshot_id', snapIds)
-                    .limit(5000);
-                if (cErr) throw cErr;
+                // Fetch agent counts for deduplicated snapshots (paginated)
+                let counts = [];
+                let countOff = 0;
+                while (true) {
+                    const { data: cPage, error: cErr } = await sb
+                        .from('agent_list_counts')
+                        .select('smart_list_id, lead_count, snapshot_id')
+                        .eq('agent_id', agentId)
+                        .in('snapshot_id', snapIds)
+                        .range(countOff, countOff + 999);
+                    if (cErr) throw cErr;
+                    if (!cPage || cPage.length === 0) break;
+                    counts = counts.concat(cPage);
+                    if (cPage.length < 1000) break;
+                    countOff += 1000;
+                }
 
                 // Build date-keyed lookup: snapId → pull_date
                 const snapDateMap = {};
