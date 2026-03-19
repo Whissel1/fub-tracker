@@ -26,16 +26,18 @@ on:
     # 3am PST = 11:00 UTC — agent sync + overnight call lock-in
     - cron: '0 11 * * *'
 
-    # Business-day refreshes: every 15 min from 6am–4:45pm PST
+    # Business-day refreshes: every 15 min from 6am–5pm PST
     #   UTC hours 14-23 = 6am–3:45pm PST
-    #   UTC hour 0      = 4pm–4:45pm PST
-    - cron: '*/15 0,14-23 * * *'
-
-    # 5pm PST = 01:00 UTC — final business-day run
-    - cron: '0 1 * * *'
+    #   UTC hours 0-1   = 4pm–5pm PST
+    #   (concurrency group prevents overlapping runs)
+    - cron: '*/15 0-1,14-23 * * *'
 
   workflow_dispatch:
     # Manual trigger runs ALL steps
+
+concurrency:
+  group: fub-sync
+  cancel-in-progress: false
 
 jobs:
   sync:

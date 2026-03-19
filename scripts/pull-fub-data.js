@@ -92,23 +92,47 @@ async function pullList(listConfig, knownAgentIds) {
     return;
   }
 
-  const { data: snap, error: snapErr } = await supabase
+  // Use Pacific date for pull_date to avoid UTC date-shift after 4pm PST
+  const nowPacific = new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
+  const pacificDate = new Date(nowPacific);
+  const pullDate = `${pacificDate.getFullYear()}-${String(pacificDate.getMonth() + 1).padStart(2, '0')}-${String(pacificDate.getDate()).padStart(2, '0')}`;
+
+  // Upsert: one snapshot per list per day (prevents bloat from 15-min cron)
+  const { data: existing } = await supabase
     .from('snapshots')
-    .insert({
-      pull_type: 'scheduled',
-      status: 'running',
-      smart_list_id: sl.id,
-      pull_date: new Date().toISOString().slice(0, 10),
-    })
-    .select()
+    .select('id')
+    .eq('smart_list_id', sl.id)
+    .eq('pull_date', pullDate)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .single();
 
-  if (snapErr) {
-    console.error(`  Snapshot create error:`, snapErr.message);
-    return;
-  }
+  let snapshotId;
+  if (existing) {
+    // Reuse today's snapshot — update status to running
+    snapshotId = existing.id;
+    await supabase.from('snapshots').update({ status: 'running' }).eq('id', snapshotId);
+    console.log(`  Reusing today's snapshot ${snapshotId}`);
+  } else {
+    // First pull of the day — create new snapshot
+    const { data: snap, error: snapErr } = await supabase
+      .from('snapshots')
+      .insert({
+        pull_type: 'scheduled',
+        status: 'running',
+        smart_list_id: sl.id,
+        pull_date: pullDate,
+      })
+      .select()
+      .single();
 
-  const snapshotId = snap.id;
+    if (snapErr) {
+      console.error(`  Snapshot create error:`, snapErr.message);
+      return;
+    }
+    snapshotId = snap.id;
+    console.log(`  Created new snapshot ${snapshotId}`);
+  }
   const agentBuckets = {};
   let url = `https://api.followupboss.com/v1/people?smartListId=${fub_list_id}&limit=100`;
   let pageCount = 0;
@@ -168,7 +192,7 @@ async function pullList(listConfig, knownAgentIds) {
         smart_list_id: sl.id,
         lead_count: b.count,
         avg_days_since_last_attempt: b.daysCount > 0 ? Math.round(b.totalDays / b.daysCount) : null,
-        max_days_since_last_attempt: b.maxDays || null,
+        max_days_since_last_attempt: b.daysCount > 0 ? b.maxDays : null,
         leads_with_no_attempt_30d: b.noAttempt30d,
         leads_with_recent_2way: b.recentTwoWay,
         leads_with_site_activity_14d: b.siteActivity14d,
@@ -180,8 +204,10 @@ async function pullList(listConfig, knownAgentIds) {
     }
 
     if (rows.length > 0) {
-      const { error: insertErr } = await supabase.from('agent_list_counts').insert(rows);
-      if (insertErr) throw new Error(`Insert error: ${insertErr.message}`);
+      const { error: upsertErr } = await supabase
+        .from('agent_list_counts')
+        .upsert(rows, { onConflict: 'snapshot_id,agent_id,smart_list_id' });
+      if (upsertErr) throw new Error(`Upsert error: ${upsertErr.message}`);
     }
 
     const duration = Date.now() - startTime;

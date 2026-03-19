@@ -1478,40 +1478,59 @@
 
                 // 3. For stale agents, fetch snapshot history via snapshots + agent_list_counts
                 if (staleIds.length > 0) {
-                    // Get all complete snapshots since STREAK_START
-                    const { data: snaps, error: snapErr } = await sb
-                        .from('snapshots')
-                        .select('id, smart_list_id, pull_date')
-                        .eq('status', 'complete')
-                        .gte('pull_date', STREAK_START)
-                        .order('pull_date', { ascending: true })
-                        .limit(10000);
+                    // Get all complete snapshots since STREAK_START — paginated
+                    let allSnaps = [];
+                    let snapOffset = 0;
+                    while (true) {
+                        const { data: snapPage, error: snapErr } = await sb
+                            .from('snapshots')
+                            .select('id, smart_list_id, pull_date')
+                            .eq('status', 'complete')
+                            .gte('pull_date', STREAK_START)
+                            .order('pull_date', { ascending: false })
+                            .range(snapOffset, snapOffset + 999);
+                        if (snapErr) { console.error('loadAllStreaks snapshot query failed:', snapErr); break; }
+                        if (!snapPage || snapPage.length === 0) break;
+                        allSnaps = allSnaps.concat(snapPage);
+                        if (snapPage.length < 1000) break;
+                        snapOffset += 1000;
+                    }
 
-                    if (snapErr) { console.error('loadAllStreaks snapshot query failed:', snapErr); }
-                    if (snaps && snaps.length > 0) {
+                    // Deduplicate: keep only latest snapshot per (smart_list_id, pull_date)
+                    const seen = new Set();
+                    const snaps = [];
+                    for (const s of allSnaps) {
+                        const key = `${s.smart_list_id}_${s.pull_date}`;
+                        if (!seen.has(key)) { seen.add(key); snaps.push(s); }
+                    }
+                    console.log(`📊 Streak data: ${allSnaps.length} total snapshots deduped to ${snaps.length}`);
+
+                    if (snaps.length > 0) {
                         const snapIds = snaps.map(s => s.id);
                         const snapDateMap = {};
                         for (const s of snaps) snapDateMap[s.id] = s.pull_date;
 
-                        // Fetch counts for stale agents — PAGINATED to overcome Supabase 1000-row server cap
+                        // Fetch counts — batch snapshot IDs to avoid URL length limits, paginate each batch
                         let counts = [];
-                        let offset = 0;
-                        const PAGE_SIZE = 1000;
-                        let paginationError = null;
-                        while (true) {
-                            const { data: page, error: pageErr } = await sb
-                                .from('agent_list_counts')
-                                .select('agent_id, smart_list_id, lead_count, snapshot_id')
-                                .in('agent_id', staleIds)
-                                .in('snapshot_id', snapIds)
-                                .range(offset, offset + PAGE_SIZE - 1);
-                            if (pageErr) { paginationError = pageErr; console.error('loadAllStreaks pagination error at offset ' + offset + ':', pageErr); break; }
-                            if (!page || page.length === 0) break;
-                            counts = counts.concat(page);
-                            if (page.length < PAGE_SIZE) break; // Last page
-                            offset += PAGE_SIZE;
+                        const BATCH = 200; // max snapshot IDs per .in() call
+                        for (let b = 0; b < snapIds.length; b += BATCH) {
+                            const batchIds = snapIds.slice(b, b + BATCH);
+                            let offset = 0;
+                            while (true) {
+                                const { data: page, error: pageErr } = await sb
+                                    .from('agent_list_counts')
+                                    .select('agent_id, smart_list_id, lead_count, snapshot_id')
+                                    .in('agent_id', staleIds)
+                                    .in('snapshot_id', batchIds)
+                                    .range(offset, offset + 999);
+                                if (pageErr) { console.error('loadAllStreaks pagination error:', pageErr); break; }
+                                if (!page || page.length === 0) break;
+                                counts = counts.concat(page);
+                                if (page.length < 1000) break;
+                                offset += 1000;
+                            }
                         }
-                        console.log(`📊 Streak data: fetched ${counts.length} rows in ${Math.ceil(offset / PAGE_SIZE) + 1} pages`);
+                        console.log(`📊 Streak counts: fetched ${counts.length} rows`);
 
                         if (paginationError) { console.error('loadAllStreaks counts query failed:', paginationError); }
                         if (counts.length > 0) {
