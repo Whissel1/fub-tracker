@@ -27,7 +27,7 @@ function getStatus(leadCount, greenMax, yellowMax) {
   return 'red';
 }
 
-function calcStreak(history, thresholds, todayPacific) {
+function calcStreak(history, thresholds, todayPacific, agentCalls, callsGreenMin) {
   const dayMap = {};
   const dayPresence = {};
 
@@ -54,7 +54,12 @@ function calcStreak(history, thresholds, todayPacific) {
   }
 
   const sortedDates = Object.keys(dayMap).sort();
-  const dailyResults = sortedDates.map(d => ({ date: d, good: dayMap[d].size >= STREAK_GOOD_THRESHOLD }));
+  const dailyResults = sortedDates.map(d => {
+    const listsGood = dayMap[d].size >= STREAK_GOOD_THRESHOLD;
+    const dailyCalls = (agentCalls && agentCalls[d]) || 0;
+    const callsGood = dailyCalls >= callsGreenMin;
+    return { date: d, good: listsGood && callsGood };
+  });
 
   let current = 0;
   for (let i = dailyResults.length - 1; i >= 0; i--) {
@@ -79,11 +84,19 @@ async function main() {
   console.log(`Pacific date: ${todayPacific}`);
 
   // 1. Load thresholds
-  const { data: thresholdRows, error: tErr } = await supabase.from('thresholds').select('smart_list_id, green_max, yellow_max');
+  const { data: thresholdRows, error: tErr } = await supabase.from('thresholds').select('smart_list_id, metric, green_max, yellow_max');
   if (tErr) throw new Error(`Failed to load thresholds: ${tErr.message}`);
   const thresholds = {};
-  for (const t of thresholdRows) thresholds[t.smart_list_id] = { green_max: t.green_max, yellow_max: t.yellow_max };
-  console.log(`Loaded ${thresholdRows.length} thresholds`);
+  let callsGreenMin = 5; // default
+  for (const t of thresholdRows) {
+    if (t.metric === 'calls_per_day') {
+      callsGreenMin = t.green_max; // green_max stores the "green if >= X" value
+      console.log(`Calls streak threshold: ${callsGreenMin}/day`);
+    } else {
+      thresholds[t.smart_list_id] = { green_max: t.green_max, yellow_max: t.yellow_max };
+    }
+  }
+  console.log(`Loaded ${Object.keys(thresholds).length} list thresholds`);
 
   // 2. Load all visible agent IDs
   const { data: agents, error: aErr } = await supabase.from('agents').select('id').eq('visible', true);
@@ -149,7 +162,30 @@ async function main() {
   }
   console.log(`Loaded ${counts.length} agent_list_counts rows`);
 
-  // 6. Build history per agent
+  // 6. Load call_daily_stats since STREAK_START — paginated
+  let allCallRows = [];
+  let callOffset = 0;
+  while (true) {
+    const { data: page, error: err } = await supabase
+      .from('call_daily_stats')
+      .select('agent_id, call_date, outbound_total')
+      .gte('call_date', STREAK_START)
+      .range(callOffset, callOffset + 999);
+    if (err) throw new Error(`Call stats query failed: ${err.message}`);
+    if (!page || page.length === 0) break;
+    allCallRows = allCallRows.concat(page);
+    if (page.length < 1000) break;
+    callOffset += 1000;
+  }
+  // Build daily outbound calls per agent: { agentId: { date: outbound_total } }
+  const callsByAgent = {};
+  for (const r of allCallRows) {
+    if (!callsByAgent[r.agent_id]) callsByAgent[r.agent_id] = {};
+    callsByAgent[r.agent_id][r.call_date] = r.outbound_total;
+  }
+  console.log(`Loaded ${allCallRows.length} call_daily_stats rows for ${Object.keys(callsByAgent).length} agents`);
+
+  // 7. Build history per agent
   const byAgent = {};
   for (const c of counts) {
     if (!byAgent[c.agent_id]) byAgent[c.agent_id] = [];
@@ -164,7 +200,8 @@ async function main() {
   const upserts = [];
   for (const id of agentIds) {
     const hist = byAgent[id] || [];
-    const result = calcStreak(hist, thresholds, todayPacific);
+    const agentCalls = callsByAgent[id] || {};
+    const result = calcStreak(hist, thresholds, todayPacific, agentCalls, callsGreenMin);
     const durableBest = Math.max(result.best, storedBest[id] || 0);
     upserts.push({
       agent_id: id,

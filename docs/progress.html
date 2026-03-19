@@ -1449,34 +1449,40 @@
             ).join('');
         }
 
-        function calcStreakFromSnapshots(history) {
+        function calcStreakFromSnapshots(history, agentCallRows) {
             // history = [{ date, list_id, lead_count }]
-            // Group by date, count green lists per day (Set-based dedup)
+            // agentCallRows = [{ call_date, outbound_total }] from callDataCache
             const dayMap = {};
-            const dayPresence = {}; // Track which lists have explicit data per day
-            // Exclude current day (Pacific time) — incomplete data shouldn't count for or against streak
+            const dayPresence = {};
             const todayPacific = getPacificDate();
             for (const h of history) {
                 if (h.date < STREAK_START) continue;
-                if (h.date === todayPacific) continue; // Skip today — only completed days count
+                if (h.date === todayPacific) continue;
                 if (!dayMap[h.date]) dayMap[h.date] = new Set();
                 if (!dayPresence[h.date]) dayPresence[h.date] = new Set();
-                dayPresence[h.date].add(h.list_id); // Track explicit presence
+                dayPresence[h.date].add(h.list_id);
                 const status = getStatus(h.lead_count, h.list_id);
                 if (status === 'green') dayMap[h.date].add(h.list_id);
             }
-            // Missing lists (no agent_list_counts row) = 0 leads = implicitly green
-            // If an agent isn't on a SmartList, they have 0 leads — which is always ≤ green_max
             const allListIds = Object.keys(thresholds).map(Number);
             for (const date of Object.keys(dayMap)) {
                 for (const listId of allListIds) {
                     if (!dayPresence[date].has(listId)) {
-                        dayMap[date].add(listId); // 0 leads is always green
+                        dayMap[date].add(listId);
                     }
                 }
             }
+            // Build daily call lookup from agent's call cache
+            const dailyCalls = {};
+            if (agentCallRows) {
+                for (const r of agentCallRows) dailyCalls[r.call_date] = r.outbound_total;
+            }
             const sortedDates = Object.keys(dayMap).sort();
-            const dailyResults = sortedDates.map(d => ({ date: d, good: dayMap[d].size >= STREAK_GOOD_THRESHOLD }));
+            const dailyResults = sortedDates.map(d => {
+                const listsGood = dayMap[d].size >= STREAK_GOOD_THRESHOLD;
+                const callsGood = (dailyCalls[d] || 0) >= callsThreshold.green_min;
+                return { date: d, good: listsGood && callsGood };
+            });
 
             // Current streak: consecutive good days backward from most recent completed day
             let current = 0;
@@ -1544,7 +1550,8 @@
         function renderDrawerStreak(agentId, history) {
             const container = document.getElementById('drawerHeaderStreak');
             if (!container) return;
-            const result = history ? calcStreakFromSnapshots(history) : { current: 0, best: 0, dailyResults: [] };
+            const agentCallRows = callDataCache[agentId] || [];
+            const result = history ? calcStreakFromSnapshots(history, agentCallRows) : { current: 0, best: 0, dailyResults: [] };
             const storedBest = (streakData[agentId] && streakData[agentId].best) || 0;
             const durableBest = Math.max(result.best, storedBest);
             const tier = getStreakTier(result.current);
@@ -2004,7 +2011,7 @@
 
             let headerHTML = '<tr>';
             headerHTML += `<th data-col="name" class="${sortCol === 'name' ? 'sorted' : ''}" onclick="setSort('name')">Agent <span class="sort-arrow">${sortCol === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
-            headerHTML += `<th class="streak-cell ${sortCol === 'streak' ? 'sorted' : ''}" onclick="setSort('streak')">Streak <span class="th-info" onclick="event.stopPropagation()" data-tip="Consecutive days with 7+ of 9 Smart Lists green. Resets on any day below that.">i</span> <span class="sort-arrow">${sortCol === 'streak' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
+            headerHTML += `<th class="streak-cell ${sortCol === 'streak' ? 'sorted' : ''}" onclick="setSort('streak')">Streak <span class="th-info" onclick="event.stopPropagation()" data-tip="Consecutive days with 7+ of 9 Smart Lists green AND ${callsThreshold.green_min}+ outbound calls. Resets on any day below either threshold.">i</span> <span class="sort-arrow">${sortCol === 'streak' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             headerHTML += `<th class="calls-cell ${sortCol === 'calls' ? 'sorted' : ''}" onclick="setSort('calls')">Calls/Day <span class="th-info" onclick="event.stopPropagation()" data-tip="7-day avg outbound calls/day. Green ≥ ${callsThreshold.green_min}, Yellow ≥ ${callsThreshold.yellow_min}, Red below.">i</span> <span class="sort-arrow">${sortCol === 'calls' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             for (const sl of smartLists) {
                 const abbr = sl.name.length > 14 ? sl.name.slice(0, 12) + '…' : sl.name;
