@@ -1545,7 +1545,10 @@
             document.querySelectorAll('.streak-cell[data-agent-id]').forEach(cell => {
                 const id = parseInt(cell.dataset.agentId);
                 const sd = streakData[id] || { current: 0, best: 0 };
-                cell.innerHTML = `<div class="mini-ring-wrap">${streakRingSVG(sd.current, Math.max(sd.best, 1), 36, 3.5)}</div>`;
+                const tier = getStreakTier(sd.current);
+                cell.textContent = sd.current;
+                cell.style.color = sd.current > 0 ? tier.color : '#999';
+                cell.style.fontWeight = sd.current > 0 ? '700' : '400';
             });
         }
 
