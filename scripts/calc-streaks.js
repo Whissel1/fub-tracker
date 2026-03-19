@@ -56,8 +56,15 @@ function calcStreak(history, thresholds, todayPacific, agentCalls, callsGreenMin
   const sortedDates = Object.keys(dayMap).sort();
   const dailyResults = sortedDates.map(d => {
     const listsGood = dayMap[d].size >= STREAK_GOOD_THRESHOLD;
-    const dailyCalls = (agentCalls && agentCalls[d]) || 0;
-    const callsGood = dailyCalls >= callsGreenMin;
+    // 7-day rolling average: sum outbound calls for this day and prior 6 days
+    let callSum = 0;
+    for (let i = 0; i < 7; i++) {
+      const checkDate = new Date(d + 'T12:00:00');
+      checkDate.setDate(checkDate.getDate() - i);
+      const ds = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+      callSum += (agentCalls && agentCalls[ds]) || 0;
+    }
+    const callsGood = (callSum / 7) >= callsGreenMin;
     return { date: d, good: listsGood && callsGood };
   });
 

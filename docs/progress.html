@@ -1480,7 +1480,15 @@
             const sortedDates = Object.keys(dayMap).sort();
             const dailyResults = sortedDates.map(d => {
                 const listsGood = dayMap[d].size >= STREAK_GOOD_THRESHOLD;
-                const callsGood = (dailyCalls[d] || 0) >= callsThreshold.green_min;
+                // 7-day rolling average for calls
+                let callSum = 0;
+                for (let i = 0; i < 7; i++) {
+                    const checkDate = new Date(d + 'T12:00:00');
+                    checkDate.setDate(checkDate.getDate() - i);
+                    const ds = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+                    callSum += dailyCalls[ds] || 0;
+                }
+                const callsGood = (callSum / 7) >= callsThreshold.green_min;
                 return { date: d, good: listsGood && callsGood };
             });
 
@@ -2011,7 +2019,7 @@
 
             let headerHTML = '<tr>';
             headerHTML += `<th data-col="name" class="${sortCol === 'name' ? 'sorted' : ''}" onclick="setSort('name')">Agent <span class="sort-arrow">${sortCol === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
-            headerHTML += `<th class="streak-cell ${sortCol === 'streak' ? 'sorted' : ''}" onclick="setSort('streak')">Streak <span class="th-info" onclick="event.stopPropagation()" data-tip="Consecutive days with 7+ of 9 Smart Lists green AND ${callsThreshold.green_min}+ outbound calls. Resets on any day below either threshold.">i</span> <span class="sort-arrow">${sortCol === 'streak' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
+            headerHTML += `<th class="streak-cell ${sortCol === 'streak' ? 'sorted' : ''}" onclick="setSort('streak')">Streak <span class="th-info" onclick="event.stopPropagation()" data-tip="Consecutive days with 7+ green Smart Lists AND a 7-day avg of ${callsThreshold.green_min}+ outbound calls/day.">i</span> <span class="sort-arrow">${sortCol === 'streak' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             headerHTML += `<th class="calls-cell ${sortCol === 'calls' ? 'sorted' : ''}" onclick="setSort('calls')">Calls/Day <span class="th-info" onclick="event.stopPropagation()" data-tip="7-day avg outbound calls/day. Green ≥ ${callsThreshold.green_min}, Yellow ≥ ${callsThreshold.yellow_min}, Red below.">i</span> <span class="sort-arrow">${sortCol === 'calls' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             for (const sl of smartLists) {
                 const abbr = sl.name.length > 14 ? sl.name.slice(0, 12) + '…' : sl.name;
