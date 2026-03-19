@@ -63,6 +63,9 @@ _Completed items moved here with ship date for reference._
 | 2026-03-18 | Fix sort after async data loads — matrix re-sorts when streak/call data arrives if sorted by those columns |
 | 2026-03-18 | Prune historical snapshot bloat — one-time SQL cleanup: 213K → 18K rows in agent_list_counts, 2,385 → 198 snapshots. Kept most complete snapshot per list per day |
 | 2026-03-19 | Calls/Day threshold color coding — green ≥ 5, yellow ≥ 3, red < 3. Thresholds stored in DB (editable). Tooltip shows current values |
+| 2026-03-19 | Add calls requirement to streak — a good day now requires 7+ green smart lists AND 7-day rolling avg of 5+ outbound calls/day. Prevents agents with empty pipelines from streaking on zero effort |
+| 2026-03-19 | Fix sticky columns on horizontal scroll — Agent name and Streak columns now pinned with opaque backgrounds |
+| 2026-03-19 | Remove status filter dropdown — unused UI element removed from header |
 
 ---
 
