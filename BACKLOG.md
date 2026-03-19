@@ -62,6 +62,7 @@ _Completed items moved here with ship date for reference._
 | 2026-03-18 | Fix call average dilution — drawer now divides by actual days with data instead of `drawerRange` |
 | 2026-03-18 | Fix sort after async data loads — matrix re-sorts when streak/call data arrives if sorted by those columns |
 | 2026-03-18 | Prune historical snapshot bloat — one-time SQL cleanup: 213K → 18K rows in agent_list_counts, 2,385 → 198 snapshots. Kept most complete snapshot per list per day |
+| 2026-03-19 | Calls/Day threshold color coding — green ≥ 5, yellow ≥ 3, red < 3. Thresholds stored in DB (editable). Tooltip shows current values |
 
 ---
 
@@ -111,12 +112,6 @@ Filter smart list data by lead source (company-provided vs. agent-generated). De
 
 An agent can be green across all smart lists simply because they have no pipeline — zero leads means zero over-threshold counts. That looks great on the matrix but masks a real problem: no business. Need a metric that surfaces lead volume per agent (assigned + self-generated) so managers can distinguish "healthy and organized" from "empty pipeline." Open questions: does FUB expose lead assignment/creation events at the agent level with enough granularity? Could be a new column in the matrix, a card in the drawer, or a separate view entirely.
 
-#### Calls/Day Threshold Color Coding
-**Priority:** TBD
-**Status:** Idea — needs threshold design
-**Depends on:** Product decision on what "acceptable" call volume looks like
-
-Calls/Day is currently a raw number with no judgment — it doesn't tell a manager whether an agent's effort level is acceptable. Adding green/yellow/red color coding (like the smart list columns) would make low-effort agents immediately visible. Needs a decision on thresholds: what's the minimum acceptable calls/day? Should it vary by role? Could reuse the existing threshold infrastructure (editable per-column targets) or be a simpler global setting.
 
 ---
 
