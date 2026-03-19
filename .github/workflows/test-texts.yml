@@ -11,30 +11,48 @@ jobs:
           cat << 'SCRIPT' | node
           const FUB_API_KEY = process.env.FUB_API_KEY;
           const token = Buffer.from(FUB_API_KEY + ':').toString('base64');
-          async function main() {
-            const resp = await fetch('https://api.followupboss.com/v1/textMessages?limit=3&sort=-created', {
-              headers: {
-                Authorization: 'Basic ' + token,
-                'Content-Type': 'application/json',
-                'X-System': 'WhisselTracker',
-                'X-System-Key': 'fub-tracker-v1',
-              }
-            });
+          const headers = {
+            Authorization: 'Basic ' + token,
+            'Content-Type': 'application/json',
+            'X-System': 'WhisselTracker',
+            'X-System-Key': 'fub-tracker-v1',
+          };
+          async function tryEndpoint(url, label) {
+            console.log('\n=== ' + label + ' ===');
+            console.log('URL: ' + url);
+            const resp = await fetch(url, { headers });
+            console.log('Status: ' + resp.status);
             if (!resp.ok) {
-              console.error('API error: ' + resp.status + ' ' + (await resp.text()));
-              process.exit(1);
+              console.log('Error: ' + (await resp.text()).substring(0, 500));
+              return;
             }
             const data = await resp.json();
-            const msgs = data.textmessages || data.textMessages || data.text_messages || [];
-            if (msgs.length > 0) {
-              const msg = msgs[0];
-              console.log('FIELDS:', JSON.stringify(Object.keys(msg)));
-              const safe = { ...msg, messageBody: '[REDACTED]', body: '[REDACTED]' };
-              console.log('SAMPLE:', JSON.stringify(safe, null, 2));
-            } else {
-              console.log('RESPONSE KEYS:', JSON.stringify(Object.keys(data)));
-              console.log('RAW:', JSON.stringify(data).substring(0, 2000));
+            const keys = Object.keys(data);
+            console.log('Response keys: ' + JSON.stringify(keys));
+            // Find the array in the response
+            for (const k of keys) {
+              if (Array.isArray(data[k]) && data[k].length > 0) {
+                const item = data[k][0];
+                console.log('Array key: ' + k + ' (' + data[k].length + ' items)');
+                console.log('Item fields: ' + JSON.stringify(Object.keys(item)));
+                // Redact message content but show structure
+                const safe = {};
+                for (const [fk, fv] of Object.entries(item)) {
+                  if (typeof fv === 'string' && fv.length > 100) safe[fk] = '[REDACTED]';
+                  else safe[fk] = fv;
+                }
+                console.log('Sample: ' + JSON.stringify(safe, null, 2));
+                break;
+              }
             }
+          }
+          async function main() {
+            // Test 1: textMessages with personId (pick a known person)
+            await tryEndpoint('https://api.followupboss.com/v1/textMessages?personId=1&limit=1', 'textMessages with personId=1');
+            // Test 2: Try getting a person to find a valid personId first
+            await tryEndpoint('https://api.followupboss.com/v1/people?limit=1&sort=-lastActivity', 'people (most recent)');
+            // Test 3: Try the calls endpoint to compare fields
+            await tryEndpoint('https://api.followupboss.com/v1/calls?limit=1&sort=-created', 'calls (for comparison)');
           }
           main().catch(e => { console.error(e); process.exit(1); });
           SCRIPT
