@@ -30,6 +30,20 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+async function fetchWithRetry(url, options, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const resp = await fetch(url, options);
+    if (resp.status === 429) {
+      const retryAfter = parseInt(resp.headers.get('retry-after') || '10', 10);
+      console.warn(`  ⚠ 429 rate limited — retrying in ${retryAfter}s (attempt ${attempt}/${maxRetries})`);
+      await sleep(retryAfter * 1000);
+      continue;
+    }
+    return resp;
+  }
+  throw new Error(`FUB API: still rate-limited after ${maxRetries} retries`);
+}
+
 function fubHeaders() {
   const token = Buffer.from(FUB_API_KEY + ':').toString('base64');
   return {
@@ -66,7 +80,7 @@ async function fetchCallsSince(since) {
   let pageCount = 0;
 
   while (url) {
-    const resp = await fetch(url, { headers: fubHeaders() });
+    const resp = await fetchWithRetry(url, { headers: fubHeaders() });
     if (!resp.ok) {
       throw new Error(`FUB API ${resp.status}: ${await resp.text()}`);
     }

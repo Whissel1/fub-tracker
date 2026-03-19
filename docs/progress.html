@@ -9,6 +9,7 @@
     <title>Agent Progress Tracker — Whissel Beer Group</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Inter:wght@400;500;600;700&display=swap');
 
@@ -1105,6 +1106,7 @@
 
         // Drawer state
         let drawerChart = null;
+        let drawerCallChartInstance = null;
         let drawerAgentId = null;
         let drawerRange = 7;
         let drawerHistoryCache = {};
@@ -1112,6 +1114,25 @@
         let callData = {};           // { agentId: { outPerDay } }
         let callDataCache = {};      // { agentId: [ daily rows ] } for drawer
         let callDataLoaded = false;
+
+        // ── Pacific timezone utilities ──
+        function getPacificDate(date) {
+            // Returns YYYY-MM-DD string in Pacific timezone
+            const d = date || new Date();
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'America/Los_Angeles',
+                year: 'numeric', month: '2-digit', day: '2-digit'
+            }).formatToParts(d);
+            const y = parts.find(p => p.type === 'year').value;
+            const m = parts.find(p => p.type === 'month').value;
+            const day = parts.find(p => p.type === 'day').value;
+            return `${y}-${m}-${day}`;
+        }
+        function getPacificDaysAgo(n) {
+            const d = new Date();
+            d.setDate(d.getDate() - n);
+            return getPacificDate(d);
+        }
 
         // ── Manage Agents Modal ──
         let manageAgentsCache = [];
@@ -1423,9 +1444,7 @@
             const dayMap = {};
             const dayPresence = {}; // Track which lists have explicit data per day
             // Exclude current day (Pacific time) — incomplete data shouldn't count for or against streak
-            const now = new Date();
-            const pacificOffset = now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
-            const todayPacific = new Date(pacificOffset).toISOString().slice(0, 10);
+            const todayPacific = getPacificDate();
             for (const h of history) {
                 if (h.date < STREAK_START) continue;
                 if (h.date === todayPacific) continue; // Skip today — only completed days count
@@ -1472,7 +1491,7 @@
                 if (existing) existing.forEach(r => { streakMap[r.agent_id] = r; });
 
                 // 2. Determine which agents need recalculation (stale = updated before today)
-                const today = new Date().toISOString().slice(0, 10);
+                const today = getPacificDate();
                 const agentIds = allAgentRows.map(r => r.agent_id).filter((v, i, a) => a.indexOf(v) === i);
                 const staleIds = agentIds; // Always recalculate — correctness over caching
 
@@ -1639,9 +1658,7 @@
         // ── Call Activity Functions ──
         async function loadCallData() {
             try {
-                const cutoff = new Date();
-                cutoff.setDate(cutoff.getDate() - 35);
-                const cutoffStr = cutoff.toISOString().slice(0, 10);
+                const cutoffStr = getPacificDaysAgo(35);
 
                 // Paginate to overcome Supabase PostgREST 1000-row server cap
                 let allCallRows = [];
@@ -1670,9 +1687,7 @@
                 }
 
                 // Compute 7-day outbound/day average for table
-                const sevenDaysAgo = new Date();
-                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-                const sevenDayStr = sevenDaysAgo.toISOString().slice(0, 10);
+                const sevenDayStr = getPacificDaysAgo(7);
 
                 callData = {};
                 for (const [agentId, rows] of Object.entries(callDataCache)) {
@@ -1701,9 +1716,7 @@
             if (!container) return;
 
             const rows = callDataCache[agentId] || [];
-            const cutoff = new Date();
-            cutoff.setDate(cutoff.getDate() - drawerRange);
-            const cutoffStr = cutoff.toISOString().slice(0, 10);
+            const cutoffStr = getPacificDaysAgo(drawerRange);
             const filtered = rows.filter(r => r.call_date >= cutoffStr);
 
             container.style.display = 'block';
@@ -1760,6 +1773,7 @@
 
         function renderDrawerCallChart(agentId, rows, canvas) {
             if (!canvas) return;
+            if (drawerCallChartInstance) { try { drawerCallChartInstance.destroy(); } catch(e) {} drawerCallChartInstance = null; }
 
             // Build date-keyed map
             const dateMap = {};
@@ -1767,24 +1781,28 @@
                 dateMap[r.call_date] = r;
             }
 
-            // Build full date range for chart
+            // Build full date range for chart (Pacific dates)
             const labels = [];
             const outData = [];
             const inData = [];
-            const cutoff = new Date();
-            cutoff.setDate(cutoff.getDate() - drawerRange);
+            const startStr = getPacificDaysAgo(drawerRange);
+            const todayStr = getPacificDate();
 
-            for (let d = new Date(cutoff); d <= new Date(); d.setDate(d.getDate() + 1)) {
-                const ds = d.toISOString().slice(0, 10);
+            // Iterate day by day from startStr to todayStr
+            for (let ds = startStr; ds <= todayStr; ) {
                 labels.push(ds.slice(5)); // MM-DD
                 const row = dateMap[ds];
                 outData.push(row ? row.outbound_total : 0);
                 inData.push(row ? row.inbound_total : 0);
+                // Advance one day
+                const parts = ds.split('-');
+                const next = new Date(+parts[0], +parts[1] - 1, +parts[2] + 1);
+                ds = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
             }
 
             const avgOut = outData.reduce((a, b) => a + b, 0) / (outData.length || 1);
 
-            new Chart(canvas, {
+            drawerCallChartInstance = new Chart(canvas, {
                 type: 'bar',
                 data: {
                     labels,
@@ -2127,10 +2145,8 @@
             document.getElementById('agentDrawer').classList.remove('open');
             document.body.style.overflow = '';
             drawerAgentId = null;
-            if (drawerChart) {
-                try { drawerChart.destroy(); } catch(e) {}
-                drawerChart = null;
-            }
+            if (drawerChart) { try { drawerChart.destroy(); } catch(e) {} drawerChart = null; }
+            if (drawerCallChartInstance) { try { drawerCallChartInstance.destroy(); } catch(e) {} drawerCallChartInstance = null; }
             // Wipe the canvas so next open gets a completely fresh element
             const container = document.querySelector('.drawer-chart-container');
             if (container) container.innerHTML = '<canvas id="drawerChart"></canvas>';
@@ -2169,9 +2185,7 @@
 
             try {
                 // Fetch snapshots from last 35 days
-                const since = new Date();
-                since.setDate(since.getDate() - 35);
-                const sinceDate = since.toISOString().slice(0, 10);
+                const sinceDate = getPacificDaysAgo(35);
 
                 // Paginate snapshots (duplicate snapshots from 15-min cron can exceed 1000 rows)
                 let allSnaps = [];
@@ -2248,16 +2262,18 @@
                 return;
             }
 
-            // Filter to range
-            const cutoff = new Date();
-            cutoff.setDate(cutoff.getDate() - drawerRange);
-            const cutoffStr = cutoff.toISOString().slice(0, 10);
+            // Filter to range (Pacific dates)
+            const cutoffStr = getPacificDaysAgo(drawerRange);
             const filtered = history.filter(h => h.date >= cutoffStr);
 
             // Generate full date sequence for the selected range
             const dates = [];
-            for (let d = new Date(cutoff); d <= new Date(); d.setDate(d.getDate() + 1)) {
-                dates.push(d.toISOString().slice(0, 10));
+            const todayStr = getPacificDate();
+            for (let ds = cutoffStr; ds <= todayStr; ) {
+                dates.push(ds);
+                const parts = ds.split('-');
+                const next = new Date(+parts[0], +parts[1] - 1, +parts[2] + 1);
+                ds = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
             }
 
             // Build data structure: { list_id: { date: lead_count } }
