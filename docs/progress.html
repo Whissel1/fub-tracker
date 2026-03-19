@@ -425,8 +425,13 @@
             border-radius: 8px 0 0 0;
             position: sticky;
             left: 0;
-            z-index: 3;
+            z-index: 4;
             min-width: 180px;
+        }
+        .matrix-table thead th:nth-child(2) {
+            position: sticky;
+            left: 180px;
+            z-index: 4;
         }
 
         .matrix-table thead th:last-child {
@@ -517,10 +522,18 @@
             z-index: 1;
         }
 
-        .matrix-table tbody tr:nth-child(even) td:first-child {
+        .matrix-table tbody td:nth-child(2) {
+            position: sticky;
+            left: 180px;
+            background: #fff;
+            z-index: 1;
+        }
+        .matrix-table tbody tr:nth-child(even) td:first-child,
+        .matrix-table tbody tr:nth-child(even) td:nth-child(2) {
             background: #faf8f6;
         }
-        .matrix-table tbody tr:hover td:first-child {
+        .matrix-table tbody tr:hover td:first-child,
+        .matrix-table tbody tr:hover td:nth-child(2) {
             background: var(--warm-white);
         }
 
