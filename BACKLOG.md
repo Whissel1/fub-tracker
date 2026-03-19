@@ -1,7 +1,7 @@
 # FUB Expectations Tracker — Backlog
 
 > **Owner:** Claude (updated each session)
-> **Last updated:** 2026-03-04
+> **Last updated:** 2026-03-18
 >
 > This is the living backlog for the project. Every feature request,
 > bug, and idea gets captured here — whether it ships now or never.
@@ -44,6 +44,24 @@ _Completed items moved here with ship date for reference._
 | 2026-03-04 | Drawer panel design overhaul — 3-zone header (name / compact streak / range toggle + controls), move subtitle under Lead Count Trend, visual divider between Call Activity and Lead Count, Call Activity title matched to section style (17px Playfair bold), compact 40px streak ring with dot trail in header |
 | 2026-03-04 | Streak widget visual enhancement — tier-colored pill container (background + border tint), 48px ring with 4px stroke, 8px dots, tier label ("Building"/"Consistent"/"Strong"/"Elite"), progressive visual impact by tier |
 | 2026-03-04 | Streak column help tooltip — ⓘ icon with explanation: "Consecutive days with 7+ of 9 Smart Lists green. Resets on any day below that." |
+| 2026-03-14 | Fix call stats overwrite bug — sync from midnight UTC of cursor's Pacific date instead of exact cursor timestamp |
+| 2026-03-18 | Fix call data pagination — Supabase PostgREST 1000-row server cap was silently truncating call data. Switched to `.range()` pagination for call_daily_stats and agent_list_counts queries |
+| 2026-03-18 | Fix agent_list_counts pagination — same 1000-row cap issue, paginated with `.range()` |
+| 2026-03-18 | Auto-hide inactive agents — `sync-agents.js` now sets `visible: false` when `is_active` becomes false |
+| 2026-03-18 | Snapshot bloat eliminated — switched `pull-fub-data.js` to upsert model (one snapshot per list per day). Reduced from ~600 snapshots/day to 9. Includes `pull_date` fix to use Pacific timezone |
+| 2026-03-18 | Fix `maxDays` falsy-zero bug — `b.maxDays \|\| null` misreported 0 as null. Fixed to `b.daysCount > 0 ? b.maxDays : null` |
+| 2026-03-18 | Add workflow concurrency group — prevents duplicate parallel runs from overlapping cron schedules. Consolidated cron expressions |
+| 2026-03-18 | Fix streak query truncation — paginated snapshot fetch with deduplication, batched `.in()` calls to avoid PostgREST URL length limits |
+| 2026-03-18 | Fix drawer chart memory leak — track and destroy Chart.js instances on drawer close/reopen |
+| 2026-03-18 | Load Chart.js annotation plugin — average line on call chart now renders (was silently failing) |
+| 2026-03-18 | Pacific timezone for all frontend dates — new `getPacificDate()`/`getPacificDaysAgo()` utilities replace all UTC-based `toISOString().slice()` patterns. Fixes off-by-one near midnight for San Diego team |
+| 2026-03-18 | 429 rate-limit retry — `fetchWithRetry()` added to all 3 backend scripts (pull-fub-calls, pull-fub-data, sync-agents). Retries up to 3x with Retry-After backoff |
+| 2026-03-18 | Move streak calculation to backend — new `scripts/calc-streaks.js` runs server-side in GitHub Actions after smart list pulls. Frontend now reads pre-computed values (no more writes from browser) |
+| 2026-03-18 | Fix `en-CA` date formatting — replaced locale-dependent `toLocaleDateString('en-CA')` with explicit `Intl.DateTimeFormat` in pull-fub-calls.js |
+| 2026-03-18 | Dead code cleanup — removed empty CSS rule, unused `prevDate` variable, replaced DOM-based `escHTML` with regex, replaced `buildMatrix(allAgentRows)` with `Set.size` |
+| 2026-03-18 | Fix call average dilution — drawer now divides by actual days with data instead of `drawerRange` |
+| 2026-03-18 | Fix sort after async data loads — matrix re-sorts when streak/call data arrives if sorted by those columns |
+| 2026-03-18 | Prune historical snapshot bloat — one-time SQL cleanup: 213K → 18K rows in agent_list_counts, 2,385 → 198 snapshots. Kept most complete snapshot per list per day |
 
 ---
 
@@ -104,12 +122,6 @@ Calls/Day is currently a raw number with no judgment — it doesn't tell a manag
 
 ### Infrastructure / Data
 
-#### Data Retention Strategy
-**Priority:** Low
-**Status:** Not started
-
-Define and implement cleanup for old snapshots (e.g., older than 6 months). Need to evaluate impact on streak calculations and historical trend charts before deleting anything. Currently ~405 snapshot rows/day, ~10K agent_list_counts/day — not urgent but will matter at scale.
-
 #### Tighten Agents Table RLS Policy
 **Priority:** Low (do when auth ships)
 **Status:** Not started — blocked on auth implementation
@@ -117,18 +129,11 @@ Define and implement cleanup for old snapshots (e.g., older than 6 months). Need
 
 The `agents` table currently has a broad `"Allow anon update visible"` RLS policy that permits the anon key to UPDATE any column. This was added to fix the Manage Agents toggle persistence bug (the frontend writes `visible` directly via the Supabase JS client). When auth is implemented, this should be scoped to only allow updating the `visible` column, and ideally require an authenticated admin role rather than anon.
 
-#### Pre-Aggregated Daily Agent Status Table
-**Priority:** Medium
-**Status:** Not started — architectural change
-**Depends on:** Nothing — can be built incrementally alongside current system
-
-Move streak computation server-side by creating a `daily_agent_status` table that stores one row per agent per day with the count of green SmartLists. This pre-aggregated data would feed both the matrix table and the drawer, eliminating the need for the client to paginate through ~11K raw `agent_list_counts` rows and compute streaks in the browser. The current client-side pagination works but is a tactical fix — this is the architectural solution. The table would be populated by a nightly GitHub Action or as part of each SmartList pull.
-
 #### Beginning-of-Day Smart List Snapshot
 **Priority:** TBD
 **Status:** Idea — not committed
 
-Store the first smart list snapshot of each day separately to enable showing daily deltas (how much each list changed during the business day). Currently snapshots overwrite, so start-of-day vs end-of-day comparison isn't possible.
+Store the first smart list snapshot of each day separately to enable showing daily deltas (how much each list changed during the business day). With the upsert model, each 15-min pull overwrites the day's snapshot, so start-of-day vs end-of-day comparison isn't possible without capturing the first pull separately.
 
 ---
 
@@ -172,3 +177,5 @@ _Items explicitly decided against. Kept for context._
 | Date | Item | Reason |
 |------|------|--------|
 | 2026-03-04 | pg_cron scheduling | Unreliable in Supabase free tier, replaced by GH Actions |
+| 2026-03-18 | Pre-aggregated daily agent status table | Solved differently — `calc-streaks.js` runs server-side in GH Actions, frontend reads pre-computed values |
+| 2026-03-18 | Data retention strategy (snapshot cleanup) | Solved at the source — upsert model produces 9 snapshots/day instead of ~600. Historical bloat pruned (213K → 18K rows) |
