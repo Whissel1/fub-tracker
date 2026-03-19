@@ -73,12 +73,6 @@ _Completed items moved here with ship date for reference._
 
 ### Features
 
-#### Communication Channel Breakdown
-**Priority:** TBD
-**Status:** Not started
-**Depends on:** FUB API support for text/email activity at agent level
-
-Break out calls vs. texts vs. emails separately. Call volume is built — texts and emails are not. Need to verify what FUB's API exposes for text and email activity with enough granularity to be useful.
 
 #### Automated Weekly Report to Agents (Slack)
 **Priority:** TBD
@@ -177,3 +171,4 @@ _Items explicitly decided against. Kept for context._
 | 2026-03-04 | pg_cron scheduling | Unreliable in Supabase free tier, replaced by GH Actions |
 | 2026-03-18 | Pre-aggregated daily agent status table | Solved differently — `calc-streaks.js` runs server-side in GH Actions, frontend reads pre-computed values |
 | 2026-03-18 | Data retention strategy (snapshot cleanup) | Solved at the source — upsert model produces 9 snapshots/day instead of ~600. Historical bloat pruned (213K → 18K rows) |
+| 2026-03-19 | Communication channel breakdown (texts/emails) | FUB API doesn't support it. No email endpoint exists. Text endpoint requires per-person queries (no bulk/agent-level access), making agent-level aggregation impractical. FUB has this data in their in-app reporting but doesn't expose it via API. Revisit if FUB adds bulk text/email endpoints or webhooks |
