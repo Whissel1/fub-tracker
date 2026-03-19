@@ -66,6 +66,7 @@ _Completed items moved here with ship date for reference._
 | 2026-03-19 | Add calls requirement to streak — a good day now requires 7+ green smart lists AND 7-day rolling avg of 5+ outbound calls/day. Prevents agents with empty pipelines from streaking on zero effort |
 | 2026-03-19 | Fix sticky columns on horizontal scroll — Agent name and Streak columns now pinned with opaque backgrounds |
 | 2026-03-19 | Remove status filter dropdown — unused UI element removed from header |
+| 2026-03-19 | Streak badge redesign — replaced progress ring with 38px colored circle badge. Tier-colored borders (building=tan, consistent=orange, strong=deep orange, elite=dark+shadow). Cleaner, more scannable |
 
 ---
 
@@ -109,6 +110,40 @@ Filter smart list data by lead source (company-provided vs. agent-generated). De
 
 An agent can be green across all smart lists simply because they have no pipeline — zero leads means zero over-threshold counts. That looks great on the matrix but masks a real problem: no business. Need a metric that surfaces lead volume per agent (assigned + self-generated) so managers can distinguish "healthy and organized" from "empty pipeline." Open questions: does FUB expose lead assignment/creation events at the agent level with enough granularity? Could be a new column in the matrix, a card in the drawer, or a separate view entirely.
 
+
+---
+
+### Technical Debt
+
+#### Cursor Update Failure Should Throw
+**Priority:** Medium
+**Status:** Not started
+
+`pull-fub-calls.js` cursor update failure only `console.warn`s, doesn't throw. A broken cursor means every future run re-fetches redundantly forever, and the warning scrolls off the GitHub Actions log unnoticed.
+
+#### Fix `teamName` Always Null
+**Priority:** Medium (prerequisite for team grouping)
+**Status:** Not started
+
+`sync-agents.js` reads `u.teamName` but FUB returns `teams[]` array, not `teamName`. Team column is permanently empty. Fix: `u.teams?.[0]?.name || null`.
+
+#### Clean Up `agent_id = -1` Orphan Rows
+**Priority:** Low
+**Status:** Not started
+
+`call_daily_stats` contains rows with `agent_id = -1` from unassigned/system calls. Harmless but pollutes data.
+
+#### `drawerHistoryCache` Unbounded Growth
+**Priority:** Low
+**Status:** Not started
+
+Frontend cache grows without bound as users click through agents. No expiry or pruning. Minor memory concern for long sessions.
+
+#### Env Var Validation
+**Priority:** Low
+**Status:** Not started
+
+No env var validation in any of the 3 backend scripts. Missing vars produce cryptic errors instead of fast-failing.
 
 ---
 
