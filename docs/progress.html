@@ -1113,6 +1113,7 @@
         let callData = {};           // { agentId: { outPerDay } }
         let callDataCache = {};      // { agentId: [ daily rows ] } for drawer
         let callDataLoaded = false;
+        let callsThreshold = { green_min: 5, yellow_min: 3 }; // defaults, overridden from DB
 
         // ── Pacific timezone utilities ──
         function getPacificDate(date) {
@@ -1273,11 +1274,16 @@
                 // 2. Load thresholds
                 const { data: thData, error: thErr } = await sb
                     .from('thresholds')
-                    .select('smart_list_id, green_max, yellow_max');
+                    .select('smart_list_id, metric, green_max, yellow_max');
                 if (thErr) throw thErr;
                 thresholds = {};
                 for (const t of thData) {
-                    thresholds[t.smart_list_id] = { green_max: t.green_max, yellow_max: t.yellow_max };
+                    if (t.metric === 'calls_per_day') {
+                        // Calls threshold: higher is better (inverted logic)
+                        callsThreshold = { green_min: t.green_max, yellow_min: t.yellow_max };
+                    } else {
+                        thresholds[t.smart_list_id] = { green_max: t.green_max, yellow_max: t.yellow_max };
+                    }
                 }
 
                 // 3. Find latest + previous snapshot per list
@@ -1350,6 +1356,12 @@
         }
 
         // ── Threshold Logic ──
+        function getCallStatus(callsPerDay) {
+            if (callsPerDay >= callsThreshold.green_min) return 'green';
+            if (callsPerDay >= callsThreshold.yellow_min) return 'yellow';
+            return 'red';
+        }
+
         function getStatus(leadCount, listId) {
             const t = thresholds[listId];
             if (!t) return 'none';
@@ -1613,7 +1625,13 @@
             document.querySelectorAll('.calls-cell[data-agent-id]').forEach(cell => {
                 const id = cell.dataset.agentId;
                 const cd = callData[id];
-                cell.textContent = cd ? Math.round(cd.outPerDay) : '0';
+                const val = cd ? Math.round(cd.outPerDay) : 0;
+                cell.textContent = val;
+                cell.classList.remove('cell-green', 'cell-yellow', 'cell-red');
+                const status = getCallStatus(val);
+                if (status === 'green') cell.classList.add('cell-green');
+                else if (status === 'yellow') cell.classList.add('cell-yellow');
+                else cell.classList.add('cell-red');
             });
         }
 
@@ -1987,7 +2005,7 @@
             let headerHTML = '<tr>';
             headerHTML += `<th data-col="name" class="${sortCol === 'name' ? 'sorted' : ''}" onclick="setSort('name')">Agent <span class="sort-arrow">${sortCol === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             headerHTML += `<th class="streak-cell ${sortCol === 'streak' ? 'sorted' : ''}" onclick="setSort('streak')">Streak <span class="th-info" onclick="event.stopPropagation()" data-tip="Consecutive days with 7+ of 9 Smart Lists green. Resets on any day below that.">i</span> <span class="sort-arrow">${sortCol === 'streak' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
-            headerHTML += `<th class="calls-cell ${sortCol === 'calls' ? 'sorted' : ''}" onclick="setSort('calls')">Calls/Day <span class="th-info" onclick="event.stopPropagation()" data-tip="7-day average of outbound calls per day">i</span> <span class="sort-arrow">${sortCol === 'calls' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
+            headerHTML += `<th class="calls-cell ${sortCol === 'calls' ? 'sorted' : ''}" onclick="setSort('calls')">Calls/Day <span class="th-info" onclick="event.stopPropagation()" data-tip="7-day avg outbound calls/day. Green ≥ ${callsThreshold.green_min}, Yellow ≥ ${callsThreshold.yellow_min}, Red below.">i</span> <span class="sort-arrow">${sortCol === 'calls' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             for (const sl of smartLists) {
                 const abbr = sl.name.length > 14 ? sl.name.slice(0, 12) + '…' : sl.name;
                 const cls = sortCol === sl.id ? 'sorted' : '';
@@ -2004,7 +2022,10 @@
                 const safeName = escHTML(agent.name).replace(/'/g, "\\'");
                 bodyHTML += `<td><a class="agent-name-link" onclick="openDrawer(${agent.id}, '${safeName}')">${escHTML(agent.name)}</a></td>`;
                 bodyHTML += `<td class="streak-cell" data-agent-id="${agent.id}"></td>`;
-                bodyHTML += `<td class="calls-cell" data-agent-id="${agent.id}">—</td>`;
+                const cd = callData[agent.id];
+                const callVal = cd ? Math.round(cd.outPerDay) : 0;
+                const callCls = callDataLoaded ? ('cell-' + getCallStatus(callVal)) : '';
+                bodyHTML += `<td class="calls-cell ${callCls}" data-agent-id="${agent.id}">${callDataLoaded ? callVal : '—'}</td>`;
                 for (const sl of smartLists) {
                     const entry = agent.lists[sl.id];
                     if (entry) {
