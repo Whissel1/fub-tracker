@@ -1,0 +1,40 @@
+name: Test FUB Texts API
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      FUB_API_KEY: ${{ secrets.FUB_API_KEY }}
+    steps:
+      - name: Run test
+        run: |
+          cat << 'SCRIPT' | node
+          const FUB_API_KEY = process.env.FUB_API_KEY;
+          const token = Buffer.from(FUB_API_KEY + ':').toString('base64');
+          async function main() {
+            const resp = await fetch('https://api.followupboss.com/v1/textMessages?limit=3&sort=-created', {
+              headers: {
+                Authorization: 'Basic ' + token,
+                'Content-Type': 'application/json',
+                'X-System': 'WhisselTracker',
+                'X-System-Key': 'fub-tracker-v1',
+              }
+            });
+            if (!resp.ok) {
+              console.error('API error: ' + resp.status + ' ' + (await resp.text()));
+              process.exit(1);
+            }
+            const data = await resp.json();
+            const msgs = data.textmessages || data.textMessages || data.text_messages || [];
+            if (msgs.length > 0) {
+              const msg = msgs[0];
+              console.log('FIELDS:', JSON.stringify(Object.keys(msg)));
+              const safe = { ...msg, messageBody: '[REDACTED]', body: '[REDACTED]' };
+              console.log('SAMPLE:', JSON.stringify(safe, null, 2));
+            } else {
+              console.log('RESPONSE KEYS:', JSON.stringify(Object.keys(data)));
+              console.log('RAW:', JSON.stringify(data).substring(0, 2000));
+            }
+          }
+          main().catch(e => { console.error(e); process.exit(1); });
+          SCRIPT
