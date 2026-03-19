@@ -888,7 +888,6 @@
         .call-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray-light); margin-bottom: 4px; }
         .call-stat-value { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 700; color: var(--dune); line-height: 1.2; }
         .call-stat-rate { font-size: 11px; color: var(--blaze-orange); font-weight: 600; margin-top: 2px; }
-        .drawer-call-section { }
         .drawer-call-section h4 { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: var(--dune); padding: 16px 16px 0; margin: 0; }
         .drawer-section-subtitle {
             font-size: 13px;
@@ -1484,118 +1483,23 @@
 
         async function loadAllStreaks() {
             try {
-                // 1. Fetch existing streak records
-                const { data: existing, error: existErr } = await sb.from('agent_streaks').select('*');
-                if (existErr) { console.error('loadAllStreaks agent_streaks query failed:', existErr); }
-                const streakMap = {};
-                if (existing) existing.forEach(r => { streakMap[r.agent_id] = r; });
+                // Streaks are now calculated server-side by calc-streaks.js
+                // Frontend just reads the pre-computed values
+                const { data: streaks, error: err } = await sb.from('agent_streaks').select('agent_id, current_streak, best_streak');
+                if (err) { console.error('loadAllStreaks query failed:', err); return; }
 
-                // 2. Determine which agents need recalculation (stale = updated before today)
-                const today = getPacificDate();
                 const agentIds = allAgentRows.map(r => r.agent_id).filter((v, i, a) => a.indexOf(v) === i);
-                const staleIds = agentIds; // Always recalculate — correctness over caching
+                const streakMap = {};
+                if (streaks) streaks.forEach(r => { streakMap[r.agent_id] = r; });
 
-                // 3. For stale agents, fetch snapshot history via snapshots + agent_list_counts
-                if (staleIds.length > 0) {
-                    // Get all complete snapshots since STREAK_START — paginated
-                    let allSnaps = [];
-                    let snapOffset = 0;
-                    while (true) {
-                        const { data: snapPage, error: snapErr } = await sb
-                            .from('snapshots')
-                            .select('id, smart_list_id, pull_date')
-                            .eq('status', 'complete')
-                            .gte('pull_date', STREAK_START)
-                            .order('pull_date', { ascending: false })
-                            .range(snapOffset, snapOffset + 999);
-                        if (snapErr) { console.error('loadAllStreaks snapshot query failed:', snapErr); break; }
-                        if (!snapPage || snapPage.length === 0) break;
-                        allSnaps = allSnaps.concat(snapPage);
-                        if (snapPage.length < 1000) break;
-                        snapOffset += 1000;
-                    }
-
-                    // Deduplicate: keep only latest snapshot per (smart_list_id, pull_date)
-                    const seen = new Set();
-                    const snaps = [];
-                    for (const s of allSnaps) {
-                        const key = `${s.smart_list_id}_${s.pull_date}`;
-                        if (!seen.has(key)) { seen.add(key); snaps.push(s); }
-                    }
-                    console.log(`📊 Streak data: ${allSnaps.length} total snapshots deduped to ${snaps.length}`);
-
-                    if (snaps.length > 0) {
-                        const snapIds = snaps.map(s => s.id);
-                        const snapDateMap = {};
-                        for (const s of snaps) snapDateMap[s.id] = s.pull_date;
-
-                        // Fetch counts — batch snapshot IDs to avoid URL length limits, paginate each batch
-                        let counts = [];
-                        const BATCH = 200; // max snapshot IDs per .in() call
-                        for (let b = 0; b < snapIds.length; b += BATCH) {
-                            const batchIds = snapIds.slice(b, b + BATCH);
-                            let offset = 0;
-                            while (true) {
-                                const { data: page, error: pageErr } = await sb
-                                    .from('agent_list_counts')
-                                    .select('agent_id, smart_list_id, lead_count, snapshot_id')
-                                    .in('agent_id', staleIds)
-                                    .in('snapshot_id', batchIds)
-                                    .range(offset, offset + 999);
-                                if (pageErr) { console.error('loadAllStreaks pagination error:', pageErr); break; }
-                                if (!page || page.length === 0) break;
-                                counts = counts.concat(page);
-                                if (page.length < 1000) break;
-                                offset += 1000;
-                            }
-                        }
-                        console.log(`📊 Streak counts: fetched ${counts.length} rows`);
-
-                        if (paginationError) { console.error('loadAllStreaks counts query failed:', paginationError); }
-                        if (counts.length > 0) {
-                            // Build history array per agent
-                            const byAgent = {};
-                            for (const c of counts) {
-                                if (!byAgent[c.agent_id]) byAgent[c.agent_id] = [];
-                                byAgent[c.agent_id].push({
-                                    date: snapDateMap[c.snapshot_id],
-                                    list_id: c.smart_list_id,
-                                    lead_count: c.lead_count
-                                });
-                            }
-
-                            // Calculate and upsert — DURABLE best_streak: never lower a stored best
-                            const upserts = [];
-                            for (const id of staleIds) {
-                                const hist = byAgent[id] || [];
-                                const result = calcStreakFromSnapshots(hist);
-                                const lastGood = result.dailyResults.filter(d => d.good).pop();
-                                // Preserve the higher of stored vs computed best_streak
-                                const storedBest = (streakMap[id] && streakMap[id].best_streak) || 0;
-                                const durableBest = Math.max(result.best, storedBest);
-                                upserts.push({
-                                    agent_id: id,
-                                    current_streak: result.current,
-                                    best_streak: durableBest,
-                                    last_good_date: lastGood ? lastGood.date : null,
-                                    updated_at: new Date().toISOString()
-                                });
-                                streakMap[id] = upserts[upserts.length - 1];
-                            }
-                            if (upserts.length > 0) {
-                                await sb.from('agent_streaks').upsert(upserts, { onConflict: 'agent_id' });
-                            }
-                        }
-                    }
-                }
-
-                // 4. Populate global streakData and update table cells
                 streakData = {};
                 for (const id of agentIds) {
                     const rec = streakMap[id];
                     streakData[id] = rec ? { current: rec.current_streak, best: rec.best_streak } : { current: 0, best: 0 };
                 }
                 updateStreakCells();
+                // Re-sort if currently sorted by streak
+                if (sortCol === 'streak') renderMatrix(buildMatrix(getFilteredRows()));
             } catch (err) {
                 console.error('Streak load error:', err);
             }
@@ -1698,6 +1602,8 @@
 
                 callDataLoaded = true;
                 updateCallCells();
+                // Re-sort if currently sorted by calls
+                if (sortCol === 'calls') renderMatrix(buildMatrix(getFilteredRows()));
             } catch (err) {
                 console.error('Call data load error:', err);
             }
@@ -1721,7 +1627,7 @@
 
             container.style.display = 'block';
 
-            const days = drawerRange;
+            const days = filtered.length > 0 ? filtered.length : drawerRange;
             const totOut = filtered.reduce((s, r) => s + r.outbound_total, 0);
             const totIn = filtered.reduce((s, r) => s + r.inbound_total, 0);
             const totConvos = filtered.reduce((s, r) => s + r.outbound_conversations + r.inbound_conversations, 0);
@@ -1909,15 +1815,15 @@
         function renderDashboard() {
             const filteredRows = getFilteredRows();
             const matrix = buildMatrix(filteredRows);
-            const allMatrix = buildMatrix(allAgentRows);
+            const totalAgentCount = new Set(allAgentRows.map(r => r.agent_id)).size;
 
-            renderKPIs(filteredRows, allMatrix);
+            renderKPIs(filteredRows, totalAgentCount);
             renderPullMeta();
-            renderCharts(filteredRows, allMatrix);
+            renderCharts(filteredRows);
             renderMatrix(matrix);
         }
 
-        function renderKPIs(rows, allMatrix) {
+        function renderKPIs(rows, totalAgentCount) {
             const agents = new Set(rows.map(r => r.agent_id));
             const totalLeads = rows.reduce((s, r) => s + r.lead_count, 0);
 
@@ -1931,7 +1837,7 @@
             }
 
             document.getElementById('kpiAgents').textContent = agents.size.toLocaleString();
-            document.getElementById('kpiAgentsDetail').textContent = `of ${allMatrix.length} total`;
+            document.getElementById('kpiAgentsDetail').textContent = `of ${totalAgentCount} total`;
             document.getElementById('kpiLeads').textContent = totalLeads.toLocaleString();
             document.getElementById('kpiRed').textContent = redCount.toLocaleString();
             document.getElementById('kpiRedDetail').textContent = `${yellowCount} yellow, ${greenCount} green`;
@@ -1959,7 +1865,7 @@
         let chartByList = null;
         let chartStatusDist = null;
 
-        function renderCharts(rows, allMatrix) {
+        function renderCharts(rows) {
             const listTotals = {};
             for (const sl of smartLists) listTotals[sl.id] = 0;
             for (const r of rows) {
@@ -2368,7 +2274,6 @@
 
             for (let i = 0; i < reversedDates.length; i++) {
                 const d = reversedDates[i];
-                const prevDate = reversedDates[i + 1]; // previous day (older)
                 const dt = new Date(d + 'T00:00:00');
                 const label = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
                 html += `<tr><td>${label}</td>`;
@@ -2405,9 +2310,7 @@
         }
 
         function escHTML(s) {
-            const d = document.createElement('div');
-            d.textContent = s;
-            return d.innerHTML;
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
         // ── Event Listeners ──

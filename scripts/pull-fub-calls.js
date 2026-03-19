@@ -66,8 +66,14 @@ function fubHeaders() {
  */
 function datePacific(isoString) {
   const d = new Date(isoString);
-  // toLocaleDateString('en-CA') returns YYYY-MM-DD format
-  return d.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(d);
+  const y = parts.find(p => p.type === 'year').value;
+  const m = parts.find(p => p.type === 'month').value;
+  const day = parts.find(p => p.type === 'day').value;
+  return `${y}-${m}-${day}`;
 }
 
 /**

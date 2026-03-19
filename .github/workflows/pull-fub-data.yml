@@ -74,3 +74,8 @@ jobs:
       - name: Pull smart list data
         if: github.event.schedule != '0 11 * * *' || github.event_name == 'workflow_dispatch'
         run: node scripts/pull-fub-data.js
+
+      # ── Streaks: recalculate after smart list data updates ──
+      - name: Calculate streaks
+        if: github.event.schedule != '0 11 * * *' || github.event_name == 'workflow_dispatch'
+        run: node scripts/calc-streaks.js
