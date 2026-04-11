@@ -2040,7 +2040,7 @@
             let headerHTML = '<tr>';
             headerHTML += `<th data-col="name" class="${sortCol === 'name' ? 'sorted' : ''}" onclick="setSort('name')">Agent <span class="sort-arrow">${sortCol === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             headerHTML += `<th class="streak-cell ${sortCol === 'streak' ? 'sorted' : ''}" onclick="setSort('streak')">Streak <span class="th-info" onclick="event.stopPropagation()" data-tip="Consecutive days with 7+ green Smart Lists AND a 7-day avg of ${callsThreshold.green_min}+ outbound calls/day.">i</span> <span class="sort-arrow">${sortCol === 'streak' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
-            headerHTML += `<th class="calls-cell ${sortCol === 'calls' ? 'sorted' : ''}" onclick="setSort('calls')">Calls/Day <span class="th-info" onclick="event.stopPropagation()" data-tip="7-day avg outbound calls/day. Green ≥ ${callsThreshold.green_min}, Yellow ≥ ${callsThreshold.yellow_min}, Red below.">i</span> <span class="sort-arrow">${sortCol === 'calls' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
+            headerHTML += `<th class="calls-cell ${sortCol === 'calls' ? 'sorted' : ''}" onclick="setSort('calls')">Calls Made <span class="th-info" onclick="event.stopPropagation()" data-tip="7-day avg outbound calls made per day. Matches FUB 'Calls Made' metric. Green ≥ ${callsThreshold.green_min}, Yellow ≥ ${callsThreshold.yellow_min}, Red below.">i</span> <span class="sort-arrow">${sortCol === 'calls' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>`;
             for (const sl of smartLists) {
                 const abbr = sl.name.length > 14 ? sl.name.slice(0, 12) + '…' : sl.name;
                 const cls = sortCol === sl.id ? 'sorted' : '';
