@@ -80,7 +80,11 @@ jobs:
         if: github.event.schedule != '0 11 * * *' || github.event_name == 'workflow_dispatch'
         run: node scripts/calc-streaks.js
 
-      # ── Debug: manual trigger only ──────────────────────────
+      # ── Debug/Backfill: manual trigger only ─────────────────
       - name: Debug call counts (FUB API vs Supabase)
         if: github.event_name == 'workflow_dispatch'
         run: node scripts/debug-call-counts.js
+
+      - name: Backfill call data (45 days)
+        if: github.event_name == 'workflow_dispatch'
+        run: node scripts/backfill-calls.js
