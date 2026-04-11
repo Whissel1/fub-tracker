@@ -196,26 +196,62 @@ async function main() {
   const buckets = aggregateCalls(calls);
   console.log(`Aggregated into ${buckets.size} agent-day buckets`);
 
-  // Step 4: Upsert into call_daily_stats (batched)
-  const rows = Array.from(buckets.values()).map((b) => ({
-    ...b,
-    updated_at: new Date().toISOString(),
-  }));
+  // Step 4: Upsert into call_daily_stats
+  //
+  // CRITICAL: Only the current Pacific date gets a full overwrite (upsert).
+  // Historical dates get INCREMENTAL adds via raw SQL to avoid overwriting
+  // previously correct totals with straggler-only partial data.
+  //
+  // Why: The sync window starts at midnight UTC of the cursor's Pacific date.
+  // This captures the full current day but also picks up a few late-logged
+  // calls from prior days. If we upsert those prior days, we overwrite
+  // their complete totals (e.g., 28 calls) with just the stragglers (e.g., 3).
+  const todayPacific = datePacific(new Date().toISOString());
+  const allRows = Array.from(buckets.values());
+  const currentDayRows = allRows.filter(b => b.call_date === todayPacific);
+  const historicalRows = allRows.filter(b => b.call_date !== todayPacific);
 
   let rowsUpserted = 0;
-  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-    const batch = rows.slice(i, i + BATCH_SIZE);
-    const { error: upsertError } = await supabase
-      .from('call_daily_stats')
-      .upsert(batch, { onConflict: 'agent_id,call_date' });
 
-    if (upsertError) {
-      throw new Error(`Failed to upsert call_daily_stats: ${upsertError.message}`);
+  // Current day: full upsert (safe — we have the complete picture)
+  if (currentDayRows.length > 0) {
+    const batch = currentDayRows.map(b => ({ ...b, updated_at: new Date().toISOString() }));
+    for (let i = 0; i < batch.length; i += BATCH_SIZE) {
+      const chunk = batch.slice(i, i + BATCH_SIZE);
+      const { error } = await supabase
+        .from('call_daily_stats')
+        .upsert(chunk, { onConflict: 'agent_id,call_date' });
+      if (error) throw new Error(`Failed to upsert current day: ${error.message}`);
+      rowsUpserted += chunk.length;
     }
-    rowsUpserted += batch.length;
+    console.log(`Upserted ${currentDayRows.length} rows for today (${todayPacific})`);
   }
 
-  console.log(`Upserted ${rowsUpserted} rows`);
+  // Historical days: accumulate onto existing totals (never overwrite)
+  if (historicalRows.length > 0) {
+    let historicalUpdated = 0;
+    for (const row of historicalRows) {
+      const { error } = await supabase.rpc('increment_call_stats', {
+        p_agent_id: row.agent_id,
+        p_call_date: row.call_date,
+        p_outbound_total: row.outbound_total,
+        p_inbound_total: row.inbound_total,
+        p_outbound_duration_sec: row.outbound_duration_sec,
+        p_inbound_duration_sec: row.inbound_duration_sec,
+        p_outbound_conversations: row.outbound_conversations,
+        p_inbound_conversations: row.inbound_conversations,
+      });
+      if (error) {
+        console.warn(`  ⚠ increment_call_stats failed for agent ${row.agent_id} on ${row.call_date}: ${error.message}`);
+      } else {
+        historicalUpdated++;
+      }
+    }
+    console.log(`Incremented ${historicalUpdated} historical rows (${historicalRows.length} attempted)`);
+    rowsUpserted += historicalUpdated;
+  }
+
+  console.log(`Total rows written: ${rowsUpserted}`);
 
   // Step 5: Advance sync cursor to latest call
   const latestCall = calls.reduce((latest, c) =>
